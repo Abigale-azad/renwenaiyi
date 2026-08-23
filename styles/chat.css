@@ -645,7 +645,7 @@
   left: 0;
   right: 0;
   z-index: 10;
-  padding: 8px 16px max(8px, env(safe-area-inset-bottom, 0px));
+  padding: 8px max(12px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
   background: color-mix(in srgb, var(--c-input, var(--c-page-body-bg)) 55%, transparent);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -724,13 +724,22 @@
 
 .chat-input-bar .chat-input-actions {
   display: flex;
-  justify-content: center;
-  gap: 32px;
+  justify-content: flex-end;
+  align-items: center;
+  gap: clamp(18px, 6vw, 30px);
   padding: 6px 0 0;
+  min-width: 0;
 }
 
 .chat-input-bar .chat-input-actions .ui-bare-btn {
   font-size: 0;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  flex: 0 0 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .chat-input-bar .chat-input-actions svg {
