@@ -47,7 +47,7 @@ import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp } from "@/lib/follow-up-service";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { AlertCircle, Blocks, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
+import { AlertCircle, Blocks, Bookmark, Check, Download, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -93,6 +93,33 @@ function isCallSysMsg(msg: ChatMessage): boolean {
 }
 /** Returns the effective UI role: call messages render as "system" regardless of stored role */
 const ACTION_MEDIA_TYPES = new Set(["poke", "accept_red_packet", "decline_red_packet", "accept_transfer", "decline_transfer", "accept_payment_request", "decline_payment_request", "group_admin_notice"]);
+const CHAT_COLLECTION_STORAGE_KEY = "chat-private-dossier-v1";
+
+type ChatCollectionRecord = {
+    id: string;
+    sessionId: string;
+    messageId: string;
+    role: ChatMessage["role"];
+    speaker: string;
+    text: string;
+    messageCreatedAt: string;
+    collectedAt: string;
+    mediaType?: ChatMessage["mediaType"];
+};
+
+function loadChatCollection(): ChatCollectionRecord[] {
+    if (typeof window === "undefined") return [];
+    try {
+        const parsed = JSON.parse(window.localStorage.getItem(CHAT_COLLECTION_STORAGE_KEY) || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveChatCollection(records: ChatCollectionRecord[]): void {
+    window.localStorage.setItem(CHAT_COLLECTION_STORAGE_KEY, JSON.stringify(records));
+}
 // 拍一拍/群管理通知/通话留痕渲染成灰色系统小字，没有 💭 面板入口——
 // 状态栏/内心独白/状态值挂上去会被显示层吞掉，挂载时必须跳过它们
 function canCarryFoldedPanel(part: { content?: string; mediaType?: ChatMessage["mediaType"] }): boolean {
@@ -4559,6 +4586,78 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         return wrapperRef.current ? createPortal(menu, wrapperRef.current) : menu;
     };
 
+    const getStoredMessageText = useCallback((message: ChatMessage): string => {
+        if (message.mediaType === "audio" && message.mediaData?.label?.trim()) {
+            return message.mediaData.label.trim();
+        }
+        return (message.content || message.mediaData?.label || "").trim();
+    }, []);
+
+    const collectStoredMessages = useCallback((messageIds: string[]) => {
+        const selected = new Set(messageIds);
+        const storedMessages = loadChatMessages(session.id).filter(message => selected.has(message.id));
+        const existing = loadChatCollection();
+        const known = new Set(existing.map(record => `${record.sessionId}:${record.messageId}`));
+        const now = new Date().toISOString();
+        const additions: ChatCollectionRecord[] = [];
+
+        storedMessages.forEach(message => {
+            const text = getStoredMessageText(message);
+            const key = `${session.id}:${message.id}`;
+            if (!text || known.has(key)) return;
+            known.add(key);
+            additions.push({
+                id: `dossier-${session.id}-${message.id}`,
+                sessionId: session.id,
+                messageId: message.id,
+                role: message.role,
+                speaker: message.role === "user"
+                    ? (userIdentity?.name || "我")
+                    : (message.senderName || character?.name || "对方"),
+                text,
+                messageCreatedAt: message.createdAt,
+                collectedAt: now,
+                mediaType: message.mediaType,
+            });
+        });
+
+        if (additions.length === 0) {
+            showChatToast("所选内容已收藏或没有可收藏文字");
+            return;
+        }
+        saveChatCollection([...existing, ...additions]);
+        showChatToast(`已收藏 ${additions.length} 条`);
+    }, [character?.name, getStoredMessageText, session.id, userIdentity?.name]);
+
+    const exportStoredMessages = useCallback((messageIds: string[]) => {
+        const selected = new Set(messageIds);
+        const storedMessages = loadChatMessages(session.id).filter(message => selected.has(message.id));
+        const blocks = storedMessages.flatMap(message => {
+            const text = getStoredMessageText(message);
+            if (!text) return [];
+            const speaker = message.role === "user"
+                ? (userIdentity?.name || "我")
+                : (message.senderName || character?.name || "对方");
+            const time = new Date(message.createdAt).toLocaleString("zh-CN", { hour12: false });
+            return [`## ${speaker} · ${time}\n\n${text}`];
+        });
+        if (blocks.length === 0) {
+            showChatToast("所选内容没有可导出的文字");
+            return;
+        }
+        const content = `# 聊天摘录\n\n${blocks.join("\n\n---\n\n")}\n`;
+        const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `聊天摘录-${new Date().toISOString().slice(0, 10)}.md`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+        showChatToast(`已导出 ${blocks.length} 条`);
+    }, [character?.name, getStoredMessageText, session.id, userIdentity?.name]);
+
     /** Reusable context menu for user/assistant bubbles */
     const renderBubbleContextMenu = (m: ChatMessage, options?: { allowMultiSelect?: boolean }) => {
         const menu = (
@@ -4600,6 +4699,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 </div>
                 <div className="flex">
                     <button onClick={() => { setQuotingMessage(m); setActiveMessageId(null); }} className="ctx-menu-btn">引用</button>
+                    <button onClick={() => { collectStoredMessages([m.id]); setActiveMessageId(null); }} className="ctx-menu-btn">收藏</button>
                     {options?.allowMultiSelect !== false && (
                         <button onClick={() => startMultiSelectFromMessage(m)} className="ctx-menu-btn">多选</button>
                     )}
@@ -4966,6 +5066,23 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         setIsMultiSelectMode(true);
         setSelectedMessageIds(new Set([storedId]));
     }, [getSelectableStoredMessageId]);
+
+    const handleMultiCollect = useCallback(() => {
+        if (selectedMessageIds.size === 0) {
+            showChatToast("请先选择消息");
+            return;
+        }
+        collectStoredMessages([...selectedMessageIds]);
+        cancelMultiSelect();
+    }, [cancelMultiSelect, collectStoredMessages, selectedMessageIds]);
+
+    const handleMultiExport = useCallback(() => {
+        if (selectedMessageIds.size === 0) {
+            showChatToast("请先选择消息");
+            return;
+        }
+        exportStoredMessages([...selectedMessageIds]);
+    }, [exportStoredMessages, selectedMessageIds]);
 
     const confirmMultiDelete = useCallback(() => {
         if (multiDeleteTargetIds.length === 0) {
@@ -5819,12 +5936,26 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     </button>
                     <div className="chat-multi-select-summary">
                         <strong>已选 {selectedMessageIds.size} 条</strong>
-                        <span>
-                            {multiDeleteTargetIds.length > selectedMessageIds.size
-                                ? `实际删除 ${multiDeleteTargetIds.length} 条，含隐藏历史`
-                                : `实际删除 ${multiDeleteTargetIds.length} 条`}
-                        </span>
+                        <span>可收藏、导出或删除</span>
                     </div>
+                    <button
+                        type="button"
+                        className="chat-multi-select-action-btn"
+                        disabled={selectedMessageIds.size === 0}
+                        onClick={handleMultiCollect}
+                    >
+                        <Bookmark size={18} strokeWidth={1.8} />
+                        收藏
+                    </button>
+                    <button
+                        type="button"
+                        className="chat-multi-select-action-btn"
+                        disabled={selectedMessageIds.size === 0}
+                        onClick={handleMultiExport}
+                    >
+                        <Download size={18} strokeWidth={1.8} />
+                        导出
+                    </button>
                     <button
                         type="button"
                         className="chat-multi-select-delete-btn"

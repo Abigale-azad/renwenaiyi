@@ -1297,6 +1297,7 @@
   backdrop-filter: blur(18px);
 }
 .chat-multi-select-icon-btn,
+.chat-multi-select-action-btn,
 .chat-multi-select-delete-btn {
   border: 0;
   min-width: 44px;
@@ -1314,6 +1315,13 @@
   background: var(--c-input);
   color: var(--c-text);
 }
+.chat-multi-select-action-btn {
+  padding: 0 10px;
+  background: color-mix(in srgb, var(--c-input) 88%, transparent);
+  color: var(--c-text-title);
+  font-size: calc(13px*var(--app-text-scale,1));
+  font-weight: 600;
+}
 .chat-multi-select-delete-btn {
   padding: 0 16px;
   background: color-mix(in srgb, var(--c-danger) 14%, transparent);
@@ -1321,6 +1329,7 @@
   font-size: calc(14px*var(--app-text-scale,1));
   font-weight: 600;
 }
+.chat-multi-select-action-btn:disabled,
 .chat-multi-select-delete-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -1344,6 +1353,23 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@media (max-width: 420px) {
+  .chat-multi-select-bar {
+    gap: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .chat-multi-select-summary span {
+    display: none;
+  }
+  .chat-multi-select-action-btn,
+  .chat-multi-select-delete-btn {
+    min-width: 48px;
+    padding: 0 8px;
+    gap: 4px;
+  }
 }
 
 /* ── Group chat sender name (above bubble) ── */
