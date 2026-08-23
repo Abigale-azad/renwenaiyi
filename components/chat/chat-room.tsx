@@ -47,7 +47,7 @@ import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp } from "@/lib/follow-up-service";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { AlertCircle, Blocks, Bookmark, Check, Download, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
+import { AlertCircle, Blocks, Bookmark, Check, Copy, Download, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -4658,6 +4658,26 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         showChatToast(`已导出 ${blocks.length} 条`);
     }, [character?.name, getStoredMessageText, session.id, userIdentity?.name]);
 
+    const copyStoredMessages = useCallback((messageIds: string[]) => {
+        const selected = new Set(messageIds);
+        const storedMessages = loadChatMessages(session.id).filter(message => selected.has(message.id));
+        const lines = storedMessages.flatMap(message => {
+            const text = getStoredMessageText(message);
+            if (!text) return [];
+            const speaker = message.role === "user"
+                ? (userIdentity?.name || "我")
+                : (message.senderName || character?.name || "对方");
+            const time = new Date(message.createdAt).toLocaleString("zh-CN", { hour12: false });
+            return [`[${time}] ${speaker}：${text}`];
+        });
+        if (lines.length === 0) {
+            showChatToast("所选内容没有可复制的文字");
+            return;
+        }
+        copyTextToClipboard(lines.join("\n\n"));
+        showChatToast(`已复制 ${lines.length} 条到剪贴板`);
+    }, [character?.name, getStoredMessageText, session.id, userIdentity?.name]);
+
     /** Reusable context menu for user/assistant bubbles */
     const renderBubbleContextMenu = (m: ChatMessage, options?: { allowMultiSelect?: boolean }) => {
         const menu = (
@@ -5083,6 +5103,14 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
         exportStoredMessages([...selectedMessageIds]);
     }, [exportStoredMessages, selectedMessageIds]);
+
+    const handleMultiCopy = useCallback(() => {
+        if (selectedMessageIds.size === 0) {
+            showChatToast("请先选择消息");
+            return;
+        }
+        copyStoredMessages([...selectedMessageIds]);
+    }, [copyStoredMessages, selectedMessageIds]);
 
     const confirmMultiDelete = useCallback(() => {
         if (multiDeleteTargetIds.length === 0) {
@@ -5936,8 +5964,19 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     </button>
                     <div className="chat-multi-select-summary">
                         <strong>已选 {selectedMessageIds.size} 条</strong>
-                        <span>可收藏、导出或删除</span>
+                        <span>可复制、收藏、导出或删除</span>
                     </div>
+                    <button
+                        type="button"
+                        className="chat-multi-select-action-btn"
+                        disabled={selectedMessageIds.size === 0}
+                        onClick={handleMultiCopy}
+                        aria-label="复制所选消息"
+                        title="复制"
+                    >
+                        <Copy size={18} strokeWidth={1.8} />
+                        <span className="chat-multi-select-action-label">复制</span>
+                    </button>
                     <button
                         type="button"
                         className="chat-multi-select-action-btn"
@@ -5945,7 +5984,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         onClick={handleMultiCollect}
                     >
                         <Bookmark size={18} strokeWidth={1.8} />
-                        收藏
+                        <span className="chat-multi-select-action-label">收藏</span>
                     </button>
                     <button
                         type="button"
@@ -5954,7 +5993,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         onClick={handleMultiExport}
                     >
                         <Download size={18} strokeWidth={1.8} />
-                        导出
+                        <span className="chat-multi-select-action-label">导出</span>
                     </button>
                     <button
                         type="button"
@@ -5963,7 +6002,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         onClick={confirmMultiDelete}
                     >
                         <Trash2 size={18} strokeWidth={1.8} />
-                        删除
+                        <span className="chat-multi-select-action-label">删除</span>
                     </button>
                 </div>
             )}

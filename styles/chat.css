@@ -1364,10 +1364,13 @@
   .chat-multi-select-summary span {
     display: none;
   }
+  .chat-multi-select-action-label {
+    display: none;
+  }
   .chat-multi-select-action-btn,
   .chat-multi-select-delete-btn {
-    min-width: 48px;
-    padding: 0 8px;
+    min-width: 44px;
+    padding: 0;
     gap: 4px;
   }
 }
