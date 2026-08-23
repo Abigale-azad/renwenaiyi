@@ -20,6 +20,7 @@ import { loadNativeTimeline, formatTimelineForSummarization } from "./short-term
 import { generateEmbedding, resolveEmbeddingModel } from "./memory-embedding";
 import { simpleLLMCall } from "./api-helpers";
 import { maybeRunCoreMemoryPipeline } from "./core-memory-builder";
+import { updatePersonalityGrowthWorldBook } from "./personality-growth";
 
 /** Per-character lock to prevent concurrent summarization. */
 const summarizingSet = new Set<string>();
@@ -37,7 +38,8 @@ export async function maybeRunSummarization(
     if (!config.autoSummarizeEnabled) return;
 
     const counter = getEventCounter(characterId);
-    if (counter < config.summarizationEventInterval) return;
+    const interval = config.summarizationEventInterval === 80 ? 30 : config.summarizationEventInterval;
+    if (counter < interval) return;
 
     if (summarizingSet.has(characterId)) return;
     summarizingSet.add(characterId);
@@ -172,6 +174,16 @@ export async function runSummarizationPipeline(
 
     incrementCoreMemoryCounter(characterId);
     await maybeRunCoreMemoryPipeline(characterId, characterName);
+
+    const growthResult = await updatePersonalityGrowthWorldBook({
+        characterId,
+        characterName,
+        recentEvents: eventsText,
+        factualSummary: summary,
+    });
+    if (!growthResult.success) {
+        console.warn("[PersonalityGrowth] Auto update failed:", growthResult.error);
+    }
 
     console.log(`[MemorySummarizer] Summarized ${allEntries.length} entries → 1 long-term memory`);
     return { success: true };

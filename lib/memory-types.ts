@@ -93,7 +93,7 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     autoBuildCoreEnabled: true,
     vectorRecallEnabled: true,
     maxLongTermEntries: 500,
-    summarizationEventInterval: 80,
+    summarizationEventInterval: 30,
     coreSummarizationInterval: 5,
     shortTermTokenBudget: 100000,
     coreMemoryTokenBudget: 100000,
