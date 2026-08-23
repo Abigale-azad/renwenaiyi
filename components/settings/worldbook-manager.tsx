@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useContext, useCallback } from "react";
-import { Plus, BookOpen, Trash2, Upload, Download, ChevronLeft, AlertCircle, Maximize2, Replace } from "lucide-react";
+import { Plus, BookOpen, Trash2, Upload, Download, ChevronLeft, AlertCircle, Maximize2, Replace, Sparkles, Loader2 } from "lucide-react";
 import {
     loadWorldBooks,
     saveWorldBooks,
@@ -16,6 +16,11 @@ import { SettingsContext } from "../phone-settings-app";
 import { BottomSheet, ConfirmDialog, TextExpandModal } from "@/components/ui/modal";
 import { SwipeActionRow, useSwipeActions } from "@/components/ui/swipe-actions";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
+import {
+    ensurePersonalityGrowthWorldBooks,
+    getPersonalityGrowthCharacterId,
+    runManualPersonalityGrowth,
+} from "@/lib/personality-growth";
 
 export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {}) {
     const [books, setBooks] = useState<WorldBookConfig[]>([]);
@@ -26,6 +31,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
     const [isLoaded, setIsLoaded] = useState(false);
     const [expandUid, setExpandUid] = useState<string | null>(null);
     const [importError, setImportError] = useState<string | null>(null);
+    const [growthStatus, setGrowthStatus] = useState<{ loading: boolean; message: string }>({ loading: false, message: "" });
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -33,7 +39,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
 
     // Initial load
     useEffect(() => {
-        const loaded = loadWorldBooks();
+        const loaded = ensurePersonalityGrowthWorldBooks(loadCharacters());
         if (loaded.length > 0) {
             setBooks(loaded);
             setActiveBookId(loaded[0]?.id || "");
@@ -321,6 +327,26 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
 
     // --- Entry Level Operations ---
     const activeBook = books.find(b => b.id === activeBookId);
+    const activeGrowthCharacterId = activeBook ? getPersonalityGrowthCharacterId(activeBook) : null;
+    const activeGrowthCharacter = activeGrowthCharacterId
+        ? loadCharacters().find(character => character.id === activeGrowthCharacterId)
+        : undefined;
+
+    const handleManualGrowth = async () => {
+        if (!activeGrowthCharacter || growthStatus.loading) return;
+        setGrowthStatus({ loading: true, message: "正在根据现有互动整理人格…" });
+        const result = await runManualPersonalityGrowth({
+            characterId: activeGrowthCharacter.id,
+            characterName: activeGrowthCharacter.name,
+        });
+        if (!result.success) {
+            setGrowthStatus({ loading: false, message: result.error || "整理失败" });
+            return;
+        }
+        const refreshed = loadWorldBooks();
+        setBooks(refreshed);
+        setGrowthStatus({ loading: false, message: "人格成长簿已更新" });
+    };
 
     const visibleEntries = activeBook?.entries || [];
 
@@ -496,6 +522,13 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                     ) : (
                         <div className="grid grid-cols-2 gap-3">
                             {books.map(book => (
+                                (() => {
+                                const growthCharacterId = getPersonalityGrowthCharacterId(book);
+                                const growthCharacter = growthCharacterId
+                                    ? loadCharacters().find(character => character.id === growthCharacterId)
+                                    : undefined;
+                                const growthReady = Boolean(book.entries.some(entry => !entry.disable && entry.content.trim()));
+                                return (
                                 <div
                                     key={book.id}
                                     className="ui-config-card min-w-0 cursor-pointer"
@@ -518,13 +551,19 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                                             <BookOpen size={16} className="shrink-0" />
                                             <span className="truncate text-[calc(14.4px*var(--app-text-scale,1))] font-bold leading-tight text-[var(--c-text-title)]">{book.name}</span>
                                         </div>
-                                        <span className="menu-desc truncate">{book.description || `${book.entries?.length || 0} 个条目`}</span>
+                                        <span className="menu-desc truncate">
+                                            {growthCharacter
+                                                ? `专属角色：${growthCharacter.name} · ${growthReady ? "已生成" : "尚未生成"}`
+                                                : (book.description || `${book.entries?.length || 0} 个条目`)}
+                                        </span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="menu-desc ts-12">条目 {book.entries?.length || 0}</span>
                                         <ChevronLeft size={16} className="opacity-40" style={{ transform: "rotate(180deg)" }} />
                                     </div>
                                 </div>
+                                );
+                                })()
                             ))}
                         </div>
                     )}
@@ -543,17 +582,38 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                                     <Download size={15} strokeWidth={1.8} />
                                     <span>导出世界书</span>
                                 </button>
-                                <button
+                                {!activeGrowthCharacterId && <button
                                     type="button"
                                     onClick={() => setConfirmDeleteTarget({ type: 'book', id: activeBook.id })}
                                     className="inline-flex h-10 items-center justify-center gap-1.5 rounded-[20px] border border-black/10 bg-white px-4 text-xs font-bold text-[var(--c-danger)] shadow-sm transition-all hover:bg-gray-50 hover:shadow-md active:scale-95"
                                 >
                                     <Trash2 size={15} strokeWidth={1.8} />
                                     <span>删除世界书</span>
-                                </button>
+                                </button>}
                             </div>
 
                             <h2 className="mx-2 mb-0 mt-2 ts-20 font-bold leading-none text-black">Worldbook Info</h2>
+                            {activeGrowthCharacter && (
+                                <div className="ui-entry-card" style={{ cursor: "default" }}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="ui-entry-icon"><Sparkles size={20} /></div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="menu-label font-semibold">{activeGrowthCharacter.name}的专属人格成长簿</div>
+                                            <div className="menu-desc mt-1">仅对该角色自动生效，不会串给其他角色，也不会覆盖核心角色卡。</div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleManualGrowth}
+                                        disabled={growthStatus.loading}
+                                        className="ui-btn ui-btn-primary w-full mt-3"
+                                    >
+                                        {growthStatus.loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                                        {growthStatus.loading ? "正在整理" : "立即整理现有互动"}
+                                    </button>
+                                    {growthStatus.message && <div className="menu-desc text-center mt-2">{growthStatus.message}</div>}
+                                </div>
+                            )}
                             <div className="ui-entry-card" style={{ cursor: "default" }}>
                                 <div className="flex flex-col gap-2">
                                     <label className="menu-label ts-13 font-semibold ml-1">世界书名称</label>
@@ -561,6 +621,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                                         type="text"
                                         value={activeBook.name}
                                         onChange={(e) => updateBook(activeBook.id, { name: e.target.value })}
+                                        disabled={Boolean(activeGrowthCharacterId)}
                                         placeholder="世界书名称..."
                                         className="ui-input font-medium"
                                     />
@@ -569,8 +630,9 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                                 <div className="flex flex-col gap-2">
                                     <label className="menu-label ts-13 font-semibold ml-1">简介描述</label>
                                     <textarea
-                                        value={activeBook.description || ""}
+                                        value={activeGrowthCharacter ? `专属角色：${activeGrowthCharacter.name}` : (activeBook.description || "")}
                                         onChange={(e) => updateBook(activeBook.id, { description: e.target.value })}
+                                        disabled={Boolean(activeGrowthCharacterId)}
                                         placeholder="简介描述..."
                                         rows={2}
                                         className="ui-textarea resize-none"

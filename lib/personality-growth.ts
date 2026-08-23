@@ -6,6 +6,8 @@ import {
     saveWorldBooks,
 } from "./settings-storage";
 import type { WorldBookConfig, WorldBookEntry } from "./settings-types";
+import type { Character } from "./character-types";
+import { loadNativeTimeline, formatTimelineForSummarization } from "./short-term-assembler";
 
 export const PERSONALITY_GROWTH_MARKER = "auto-personality-growth:";
 const CURRENT_ENTRY_COMMENT = "当前人格成长（自动生成）";
@@ -36,6 +38,34 @@ function makeEntry(input: Partial<WorldBookEntry> & Pick<WorldBookEntry, "uid" |
 function findGrowthBook(books: WorldBookConfig[], characterId: string): WorldBookConfig | undefined {
     const marker = markerFor(characterId);
     return books.find(book => book.description === marker);
+}
+
+export function getPersonalityGrowthCharacterId(book: WorldBookConfig): string | null {
+    const description = book.description || "";
+    return description.startsWith(PERSONALITY_GROWTH_MARKER)
+        ? description.slice(PERSONALITY_GROWTH_MARKER.length)
+        : null;
+}
+
+export function ensurePersonalityGrowthWorldBooks(characters: Character[]): WorldBookConfig[] {
+    const books = loadWorldBooks();
+    const existingCharacterIds = new Set(
+        books.map(getPersonalityGrowthCharacterId).filter((id): id is string => Boolean(id)),
+    );
+    const additions = characters
+        .filter(character => !existingCharacterIds.has(character.id))
+        .map(character => {
+            const book = createWorldBook(`${character.name} · 人格成长簿`);
+            return {
+                ...book,
+                description: markerFor(character.id),
+                entries: [],
+            };
+        });
+    if (additions.length === 0) return books;
+    const next = [...books, ...additions];
+    saveWorldBooks(next);
+    return next;
 }
 
 export function getAutomaticPersonalityWorldBookIds(characterId: string): string[] {
@@ -126,4 +156,19 @@ ${input.factualSummary}
         window.dispatchEvent(new CustomEvent("settings-worldbooks-updated"));
     }
     return { success: true, bookId: updatedBook.id };
+}
+
+export async function runManualPersonalityGrowth(input: {
+    characterId: string;
+    characterName: string;
+}): Promise<{ success: boolean; error?: string; bookId?: string }> {
+    const entries = loadNativeTimeline(input.characterId);
+    if (entries.length < 4) return { success: false, error: "至少需要4条聊天或互动记录" };
+    const formatted = formatTimelineForSummarization(entries);
+    if (!formatted?.eventsText) return { success: false, error: "没有可整理的互动内容" };
+    return updatePersonalityGrowthWorldBook({
+        ...input,
+        recentEvents: formatted.eventsText,
+        factualSummary: `手动整理范围：${formatted.earliest} 至 ${formatted.latest}，共${entries.length}条互动。`,
+    });
 }
