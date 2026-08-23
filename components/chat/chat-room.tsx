@@ -541,6 +541,18 @@ function copyTextToClipboard(text: string): void {
     }
 }
 
+function getChatMessageQuoteText(message: ChatMessage): string {
+    const mediaLabel = message.mediaData?.label?.trim();
+    if (message.mediaType === "audio" && mediaLabel) return mediaLabel;
+    if (message.content?.trim()) return message.content.trim();
+    if (mediaLabel) return mediaLabel;
+    if (message.mediaType === "image") return "[图片]";
+    if (message.mediaType === "sticker") return "[表情]";
+    if (message.mediaType === "location") return "[位置]";
+    if (message.mediaType === "music_share") return "[音乐]";
+    return "[消息]";
+}
+
 function MemoryWriteRequestCard({
     msg,
     onApprove,
@@ -782,7 +794,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             {quotingMessage && (
                 <div className="chat-quote-bar">
                     <div className="flex-1 ts-12 text-[var(--c-icon)] overflow-hidden text-ellipsis whitespace-nowrap">
-                        引用 {quotingMessage.role === "user" ? "你" : characterName}: {quotingMessage.content.slice(0, 40)}
+                        引用 {quotingMessage.role === "user" ? "你" : characterName}: {getChatMessageQuoteText(quotingMessage).slice(0, 40)}
                     </div>
                     <button onClick={onClearQuote} className="ui-bare-btn text-[var(--c-icon)] ts-16 leading-none p-[2px]">✕</button>
                 </div>
@@ -3738,7 +3750,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const isQuoting = !!quotingMessage;
         const quoteData = quotingMessage ? {
             quoteMessageId: quotingMessage.id,
-            quotePreview: quotingMessage.content.slice(0, 50),
+            quotePreview: getChatMessageQuoteText(quotingMessage).slice(0, 50),
             quoteRole: quotingMessage.role,
         } : undefined;
         setQuotingMessage(null);
@@ -4718,7 +4730,16 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     )}
                 </div>
                 <div className="flex">
-                    <button onClick={() => { setQuotingMessage(m); setActiveMessageId(null); }} className="ctx-menu-btn">引用</button>
+                    <button onClick={() => {
+                        setQuotingMessage(m);
+                        setShowEmojiPanel(false);
+                        setShowStickerPanel(false);
+                        setShowPlusMenu(false);
+                        setActiveMessageId(null);
+                        setContextMenuAnchor(null);
+                        showChatToast("已引用，输入回复后发送");
+                        requestAnimationFrame(() => chatTextInputRef.current?.appendText(""));
+                    }} className="ctx-menu-btn">引用</button>
                     <button onClick={() => { collectStoredMessages([m.id]); setActiveMessageId(null); }} className="ctx-menu-btn">收藏</button>
                     {options?.allowMultiSelect !== false && (
                         <button onClick={() => startMultiSelectFromMessage(m)} className="ctx-menu-btn">多选</button>
@@ -5891,7 +5912,21 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                             {renderMsg.mediaType === "audio" && renderMsg.mediaData?.label && (
                                 <div className={`chat-msg-wrapper`} data-role={uiRole(msg)} style={{ marginTop: -12 }}>
                                     {msg.role !== "user" && <div className="w-[40px] shrink-0" />}
-                                    <div className="voice-msg-text-bubble">
+                                    <div
+                                        className="voice-msg-text-bubble"
+                                        onPointerDown={(e) => { e.stopPropagation(); handleMessagePointerDown(e, msg.id); }}
+                                        onPointerUp={(e) => handleMessagePointerUp(e)}
+                                        onPointerCancel={handleMessagePointerCancel}
+                                        onPointerLeave={handleMessagePointerCancel}
+                                        onPointerMove={(e) => {
+                                            if (startPosRef.current) {
+                                                const dx = Math.abs(e.clientX - startPosRef.current.x);
+                                                const dy = Math.abs(e.clientY - startPosRef.current.y);
+                                                if (dx > 10 || dy > 10) handleMessagePointerCancel();
+                                            }
+                                        }}
+                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); }}
+                                    >
                                         <BilingualTextBlock
                                             text={msg.displayProjected ? (renderMsg.mediaData?.label || "") : renderDisplayText(renderMsg.mediaData?.label || "", msg.role === "user" ? 1 : 2, false)}
                                             mode="markdown"
