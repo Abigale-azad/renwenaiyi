@@ -8,6 +8,16 @@ import { CLOUD_BACKUP_BUCKET, normalizeBackupUrl, type CloudBackupConfig } from 
 
 type Creds = { url: string; key: string };
 
+function isManaged(config: CloudBackupConfig): boolean {
+  return config.managed === true;
+}
+
+function managedUrl(action: string, path = ""): string {
+  const query = new URLSearchParams({ action });
+  if (path) query.set(action === "list" ? "prefix" : "path", path);
+  return `/api/account-backup/storage?${query.toString()}`;
+}
+
 function resolveCreds(config: CloudBackupConfig): Creds | null {
   const url = normalizeBackupUrl(config.url);
   const key = (config.key || "").trim();
@@ -25,6 +35,15 @@ function objectUrl(creds: Creds, path: string): string {
 
 /** Upload (overwrites if present). Body can be a Blob/ArrayBuffer/string. */
 export async function putObject(config: CloudBackupConfig, path: string, body: BlobPart, contentType = "application/octet-stream"): Promise<void> {
+  if (isManaged(config)) {
+    const res = await fetch(managedUrl("put", path), {
+      method: "POST",
+      headers: { "Content-Type": contentType },
+      body: body instanceof Blob ? body : new Blob([body], { type: contentType }),
+    });
+    if (!res.ok) throw new Error(await describeError(res));
+    return;
+  }
   const creds = resolveCreds(config);
   if (!creds) throw new Error("未配置 Supabase 地址或 key。");
   const res = await fetch(objectUrl(creds, path), {
@@ -39,6 +58,12 @@ export async function putObject(config: CloudBackupConfig, path: string, body: B
  *  Supabase Storage 对不存在的对象返回 400 "Object not found" 而不是 404，
  *  与 removeObject 相同，两种都视为不存在。 */
 export async function getObject(config: CloudBackupConfig, path: string): Promise<Blob | null> {
+  if (isManaged(config)) {
+    const res = await fetch(managedUrl("get", path), { cache: "no-store" });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(await describeError(res));
+    return await res.blob();
+  }
   const creds = resolveCreds(config);
   if (!creds) throw new Error("未配置 Supabase 地址或 key。");
   const res = await fetch(objectUrl(creds, path), { headers: authHeaders(creds.key), cache: "no-store" });
@@ -52,6 +77,11 @@ export async function getObject(config: CloudBackupConfig, path: string): Promis
 }
 
 export async function removeObject(config: CloudBackupConfig, path: string): Promise<void> {
+  if (isManaged(config)) {
+    const res = await fetch(managedUrl("delete", path), { method: "DELETE" });
+    if (res.ok || res.status === 404) return;
+    throw new Error(await describeError(res));
+  }
   const creds = resolveCreds(config);
   if (!creds) throw new Error("未配置 Supabase 地址或 key。");
   const res = await fetch(objectUrl(creds, path), { method: "DELETE", headers: authHeaders(creds.key) });
@@ -65,6 +95,12 @@ export type StorageObject = { name: string; size: number; updatedAt?: string };
 
 /** List objects under a prefix (e.g. "manifests/"). */
 export async function listObjects(config: CloudBackupConfig, prefix = "", limit = 100): Promise<StorageObject[]> {
+  if (isManaged(config)) {
+    const res = await fetch(`${managedUrl("list", prefix)}&limit=${encodeURIComponent(String(limit))}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(await describeError(res));
+    const data = await res.json().catch(() => []);
+    return Array.isArray(data) ? data as StorageObject[] : [];
+  }
   const creds = resolveCreds(config);
   if (!creds) throw new Error("未配置 Supabase 地址或 key。");
   const res = await fetch(`${creds.url}/storage/v1/object/list/${CLOUD_BACKUP_BUCKET}`, {
@@ -87,6 +123,11 @@ export async function listObjects(config: CloudBackupConfig, prefix = "", limit 
  * (bucket creation is an admin operation); succeeds idempotently if present.
  */
 export async function ensureBucket(config: CloudBackupConfig): Promise<void> {
+  if (isManaged(config)) {
+    const res = await fetch(managedUrl("ensure"), { method: "POST" });
+    if (!res.ok) throw new Error(await describeError(res));
+    return;
+  }
   const creds = resolveCreds(config);
   if (!creds) throw new Error("未配置 Supabase 地址或 key。");
   const res = await fetch(`${creds.url}/storage/v1/bucket`, {

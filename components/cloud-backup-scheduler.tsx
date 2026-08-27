@@ -2,8 +2,10 @@
 
 import { useEffect } from "react";
 
+import { useAccount } from "@/lib/account-context";
 import { isCloudBackupConfigured, loadCloudBackupConfig } from "@/lib/cloud-backup/config";
-import { loadCloudBackupState, runCloudBackup } from "@/lib/cloud-backup/engine";
+import { listCloudBackups, loadCloudBackupState, restoreFromCloudManifest, runCloudBackup } from "@/lib/cloud-backup/engine";
+import { inspectData } from "@/lib/data-management/backup";
 
 // Module-level guard so overlapping timers/mounts never run two backups at once.
 let backupRunning = false;
@@ -16,14 +18,42 @@ let backupRunning = false;
  * so it stays off the critical path and doesn't freeze the UI.
  */
 export function CloudBackupScheduler() {
+  const { account } = useAccount();
+
   useEffect(() => {
     let cancelled = false;
+    const restoreMarker = `ai-phone-account-cloud-ready:${account.id}`;
 
     const runWhenIdle = (fn: () => void) => {
       if (typeof window.requestIdleCallback === "function") {
         window.requestIdleCallback(() => fn(), { timeout: 4000 });
       } else {
         window.setTimeout(fn, 400);
+      }
+    };
+
+    const bootstrap = async () => {
+      const config = loadCloudBackupConfig();
+      if (!config.managed || !isCloudBackupConfigured(config)) return;
+      if (window.localStorage.getItem(restoreMarker) === "1") return;
+      try {
+        const [local, backups] = await Promise.all([inspectData(), listCloudBackups(config)]);
+        const latest = backups.find(item => !item.quarantine);
+        // A cleared browser often recreates a few default rows. Compare it with
+        // the cloud backup instead of requiring a literal zero-record database.
+        const cloudIsClearlyRicher = Boolean(latest && latest.totalRecords > Math.max(20, local.totalRecords * 2));
+        if (latest && (local.totalRecords === 0 || cloudIsClearlyRicher)) {
+          await restoreFromCloudManifest(config, latest.name, { overwrite: true });
+          window.localStorage.setItem(restoreMarker, "1");
+          window.location.reload();
+          return;
+        }
+        if (!latest && local.totalRecords > 0) {
+          await runCloudBackup(config, { force: true, excludeMedia: false });
+        }
+        window.localStorage.setItem(restoreMarker, "1");
+      } catch {
+        // Leave the marker unset: a later tick/reload will retry safely.
       }
     };
 
@@ -51,14 +81,16 @@ export function CloudBackupScheduler() {
       });
     };
 
+    const bootstrapTimer = window.setTimeout(() => { void bootstrap(); }, 1500);
     const interval = window.setInterval(tick, 5 * 60_000);
     const initial = window.setTimeout(tick, 30_000);
     return () => {
       cancelled = true;
+      window.clearTimeout(bootstrapTimer);
       window.clearInterval(interval);
       window.clearTimeout(initial);
     };
-  }, []);
+  }, [account.id]);
 
   return null;
 }

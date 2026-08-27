@@ -7,6 +7,8 @@ const CLOUD_BACKUP_CONFIG_KEY = "ai_phone_cloud_backup_config_v1";
 registerKvMigration(CLOUD_BACKUP_CONFIG_KEY);
 
 export type CloudBackupConfig = {
+  /** Account-bound server managed storage. The browser never receives a Supabase secret. */
+  managed?: boolean;
   /** User's Supabase project URL, e.g. https://xxxx.supabase.co */
   url: string;
   /** User's Supabase service_role key (needed to auto-create the bucket). */
@@ -22,6 +24,7 @@ export type CloudBackupConfig = {
 };
 
 export const DEFAULT_CLOUD_BACKUP_CONFIG: CloudBackupConfig = {
+  managed: false,
   url: "",
   key: "",
   enabled: false,
@@ -40,9 +43,15 @@ export function normalizeBackupUrl(url: string): string {
 export function loadCloudBackupConfig(): CloudBackupConfig {
   try {
     const raw = kvGet(CLOUD_BACKUP_CONFIG_KEY);
-    if (!raw) return { ...DEFAULT_CLOUD_BACKUP_CONFIG };
+    const accountManaged = process.env.NEXT_PUBLIC_SELF_HOSTED_MODE === "false";
+    if (!raw) {
+      return accountManaged
+        ? { ...DEFAULT_CLOUD_BACKUP_CONFIG, managed: true, enabled: true, intervalHours: 1, excludeMedia: false }
+        : { ...DEFAULT_CLOUD_BACKUP_CONFIG };
+    }
     const parsed = JSON.parse(raw) as Partial<CloudBackupConfig>;
-    return {
+    const loaded: CloudBackupConfig = {
+      managed: Boolean(parsed.managed),
       url: typeof parsed.url === "string" ? parsed.url : "",
       key: typeof parsed.key === "string" ? parsed.key : "",
       enabled: Boolean(parsed.enabled),
@@ -50,8 +59,13 @@ export function loadCloudBackupConfig(): CloudBackupConfig {
       keepCount: clampKeepCount(parsed.keepCount),
       excludeMedia: parsed.excludeMedia !== false,
     };
+    return accountManaged
+      ? { ...loaded, managed: true, enabled: true, intervalHours: 1, excludeMedia: false }
+      : loaded;
   } catch {
-    return { ...DEFAULT_CLOUD_BACKUP_CONFIG };
+    return process.env.NEXT_PUBLIC_SELF_HOSTED_MODE === "false"
+      ? { ...DEFAULT_CLOUD_BACKUP_CONFIG, managed: true, enabled: true, intervalHours: 1, excludeMedia: false }
+      : { ...DEFAULT_CLOUD_BACKUP_CONFIG };
   }
 }
 
@@ -67,7 +81,7 @@ export function saveCloudBackupConfig(config: CloudBackupConfig): void {
 }
 
 export function isCloudBackupConfigured(config: CloudBackupConfig): boolean {
-  return Boolean(normalizeBackupUrl(config.url) && config.key.trim());
+  return Boolean(config.managed || (normalizeBackupUrl(config.url) && config.key.trim()));
 }
 
 function clampInterval(value: unknown): number {

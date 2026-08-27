@@ -31,7 +31,9 @@ const ANOMALY_RECORDS_RATIO = 0.5;
 
 // Stay under Supabase Storage's per-file upload limit (free tier ~50MB). A module
 // whose gzipped payload exceeds this is split into several part objects.
-const MAX_OBJECT_BYTES = 40 * 1024 * 1024;
+// Keep each request below common serverless body/response limits. Managed
+// account backup proxies these chunks through a Netlify function.
+const MAX_OBJECT_BYTES = 4 * 1024 * 1024;
 
 function sliceBlob(blob: Blob, max: number): Blob[] {
   if (blob.size <= max) return [blob];
