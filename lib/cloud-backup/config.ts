@@ -6,6 +6,18 @@ export const CLOUD_BACKUP_BUCKET = "ai-phone-backup";
 const CLOUD_BACKUP_CONFIG_KEY = "ai_phone_cloud_backup_config_v1";
 registerKvMigration(CLOUD_BACKUP_CONFIG_KEY);
 
+/**
+ * Hosted/account deployments are the safe default. A self-hosted installation
+ * must opt out explicitly with NEXT_PUBLIC_SELF_HOSTED_MODE=true.
+ *
+ * Netlify can omit a public env value from an older client bundle. Treating an
+ * omitted value as self-hosted used to expose the legacy service-role form and
+ * let imported backups downgrade an authenticated account to manual mode.
+ */
+export function isAccountManagedBackupDeployment(): boolean {
+  return process.env.NEXT_PUBLIC_SELF_HOSTED_MODE !== "true";
+}
+
 export type CloudBackupConfig = {
   /** Account-bound server managed storage. The browser never receives a Supabase secret. */
   managed?: boolean;
@@ -43,7 +55,7 @@ export function normalizeBackupUrl(url: string): string {
 export function loadCloudBackupConfig(): CloudBackupConfig {
   try {
     const raw = kvGet(CLOUD_BACKUP_CONFIG_KEY);
-    const accountManaged = process.env.NEXT_PUBLIC_SELF_HOSTED_MODE === "false";
+    const accountManaged = isAccountManagedBackupDeployment();
     if (!raw) {
       return accountManaged
         ? { ...DEFAULT_CLOUD_BACKUP_CONFIG, managed: true, enabled: true, intervalHours: 1, excludeMedia: false }
@@ -63,20 +75,25 @@ export function loadCloudBackupConfig(): CloudBackupConfig {
       ? { ...loaded, managed: true, enabled: true, intervalHours: 1, excludeMedia: false }
       : loaded;
   } catch {
-    return process.env.NEXT_PUBLIC_SELF_HOSTED_MODE === "false"
+    return isAccountManagedBackupDeployment()
       ? { ...DEFAULT_CLOUD_BACKUP_CONFIG, managed: true, enabled: true, intervalHours: 1, excludeMedia: false }
       : { ...DEFAULT_CLOUD_BACKUP_CONFIG };
   }
 }
 
 export function saveCloudBackupConfig(config: CloudBackupConfig): void {
+  const accountManaged = isAccountManagedBackupDeployment();
   kvSet(CLOUD_BACKUP_CONFIG_KEY, JSON.stringify({
     ...config,
-    url: normalizeBackupUrl(config.url),
-    key: (config.key || "").trim(),
-    intervalHours: clampInterval(config.intervalHours),
+    managed: accountManaged || config.managed === true,
+    // Secrets belong on the deployment server. Never retain an imported or
+    // previously pasted service_role key in an account-managed browser.
+    url: accountManaged ? "" : normalizeBackupUrl(config.url),
+    key: accountManaged ? "" : (config.key || "").trim(),
+    enabled: accountManaged ? true : Boolean(config.enabled),
+    intervalHours: accountManaged ? 1 : clampInterval(config.intervalHours),
     keepCount: clampKeepCount(config.keepCount),
-    excludeMedia: config.excludeMedia !== false,
+    excludeMedia: accountManaged ? false : config.excludeMedia !== false,
   }));
 }
 
