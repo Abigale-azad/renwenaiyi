@@ -1102,6 +1102,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [regexRevision, setRegexRevision] = useState(0);
     // Whether there are unsent user messages waiting for AI generation
     const [pendingGenerate, setPendingGenerate] = useState(false);
+    const [autoAuditionProgress, setAutoAuditionProgress] = useState<{ current: number; total: number; title: string } | null>(null);
+    const autoAuditionStartedRef = useRef(false);
     const [chatToast, setChatToast] = useState<string | null>(null);
     const chatToastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
     const [cloudDeletePending, setCloudDeletePending] = useState<{ count: number } | null>(null);
@@ -3691,6 +3693,36 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     };
 
     useEffect(() => {
+        if (autoAuditionStartedRef.current || session.isGroup) return;
+        const storageKey = `ai_phone_auto_audition_${session.id}`;
+        const raw = kvGet(storageKey);
+        if (!raw) return;
+        let scripts: Array<{ title?: string; message?: string }> = [];
+        try { scripts = JSON.parse(raw); } catch { kvRemove(storageKey); return; }
+        scripts = scripts.filter(item => typeof item?.message === "string" && item.message.trim());
+        if (scripts.length === 0) { kvRemove(storageKey); return; }
+        autoAuditionStartedRef.current = true;
+        kvRemove(storageKey);
+        let cancelled = false;
+        void (async () => {
+            for (let index = 0; index < scripts.length; index++) {
+                if (cancelled) break;
+                const script = scripts[index];
+                setAutoAuditionProgress({ current: index + 1, total: scripts.length, title: script.title || `场景${index + 1}` });
+                const userMsg = pushChatMessage({ sessionId: session.id, role: "user", content: script.message!.trim(), origin: "chat", mediaData: { label: `妃卡试戏 · ${script.title || `场景${index + 1}`}` } });
+                setMessages(prev => [...prev, userMsg]);
+                await triggerAIResponse();
+                if (!cancelled && index < scripts.length - 1) await new Promise(resolve => window.setTimeout(resolve, 450));
+            }
+            if (!cancelled) {
+                setAutoAuditionProgress(null);
+                showChatToast("自动试戏完成，可以继续亲自聊天");
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [session.id, session.isGroup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
         const handleCustomAppReplyRequest = (event: Event) => {
             const detail = (event as CustomEvent<{
                 sessionId?: string;
@@ -5307,6 +5339,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     </span>
                 </div>
             </header>
+            {autoAuditionProgress && (
+                <div className="chat-room-main-pane px-4 py-2 text-center text-xs" style={{ background: "rgba(198,167,120,.16)", color: "var(--c-text-title)", borderBottom: "1px solid rgba(198,167,120,.22)" }}>
+                    自动试戏 {autoAuditionProgress.current}/{autoAuditionProgress.total} · {autoAuditionProgress.title}
+                </div>
+            )}
             <ChatPluginSlot
                 name="chat.header"
                 slotProps={{ sessionId: session.id, isGroup: !!session.isGroup }}
