@@ -704,41 +704,51 @@ export function DataManagement({ onNotice }: DataManagementProps) {
           <div className="menu-item data-readonly-item">
             <DataSettingsIcon icon={CloudUpload} color={BINDING_ACCENTS.api} />
             <div className="menu-label-group">
-              <span className="menu-label">备份到你的 Supabase</span>
-              <span className="menu-desc">填入你自己的 Supabase 地址与 service_role key，点测试连接会自动建好备份桶（无需手动设置）。</span>
+              <span className="menu-label">{cloudConfig.managed ? "账号云备份" : "备份到你的 Supabase"}</span>
+              <span className="menu-desc">
+                {cloudConfig.managed
+                  ? "已由登录账号安全托管，密钥只保存在服务器；导入旧备份不会覆盖此模式。"
+                  : "填入你自己的 Supabase 地址与 service_role key，点测试连接会自动建好备份桶（无需手动设置）。"}
+              </span>
             </div>
           </div>
 
           <div className="data-cloud-form">
-            <label className="data-cloud-field">
-              <span className="menu-desc ml-1">Supabase 地址 (URL)</span>
-              <Input
-                value={cloudConfig.url}
-                onChange={(e) => updateCloud({ url: e.target.value })}
-                placeholder="https://xxxx.supabase.co"
-                spellCheck={false}
-              />
-            </label>
-            <label className="data-cloud-field">
-              <span className="menu-desc ml-1">service_role key</span>
-              <Input
-                type="password"
-                value={cloudConfig.key}
-                onChange={(e) => updateCloud({ key: e.target.value })}
-                placeholder="eyJhbGci..."
-                spellCheck={false}
-              />
-            </label>
+            {!cloudConfig.managed && (
+              <>
+                <label className="data-cloud-field">
+                  <span className="menu-desc ml-1">Supabase 地址 (URL)</span>
+                  <Input
+                    value={cloudConfig.url}
+                    onChange={(e) => updateCloud({ url: e.target.value })}
+                    placeholder="https://xxxx.supabase.co"
+                    spellCheck={false}
+                  />
+                </label>
+                <label className="data-cloud-field">
+                  <span className="menu-desc ml-1">service_role key</span>
+                  <Input
+                    type="password"
+                    value={cloudConfig.key}
+                    onChange={(e) => updateCloud({ key: e.target.value })}
+                    placeholder="eyJhbGci..."
+                    spellCheck={false}
+                  />
+                </label>
+              </>
+            )}
 
             <div className="data-cloud-actions">
-              <button
-                type="button"
-                className={`ui-btn ui-btn-outline ${cloudTesting ? "is-busy" : ""}`}
-                onClick={() => void testCloud()}
-                disabled={cloudTesting || cloudBackingUp || !isCloudBackupConfigured(cloudConfig)}
-              >
-                {cloudTesting ? <><Loader2 size={16} className="animate-spin" /> 测试中…</> : "测试连接"}
-              </button>
+              {!cloudConfig.managed && (
+                <button
+                  type="button"
+                  className={`ui-btn ui-btn-outline ${cloudTesting ? "is-busy" : ""}`}
+                  onClick={() => void testCloud()}
+                  disabled={cloudTesting || cloudBackingUp || !isCloudBackupConfigured(cloudConfig)}
+                >
+                  {cloudTesting ? <><Loader2 size={16} className="animate-spin" /> 测试中…</> : "测试连接"}
+                </button>
+              )}
               <button
                 type="button"
                 className={`ui-btn ui-btn-primary ${cloudBackingUp ? "is-busy" : ""}`}
