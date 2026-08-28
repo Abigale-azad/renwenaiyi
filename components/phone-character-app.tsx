@@ -53,6 +53,7 @@ import {
 import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { normalizeTimeZone } from "@/lib/character-time";
+import { CastingStudio } from "@/components/character/casting-studio";
 
 type ViewType = "list" | "detail";
 
@@ -456,6 +457,7 @@ function CharListView({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [showNpcGen, setShowNpcGen] = useState(false);
+  const [showCastingStudio, setShowCastingStudio] = useState(false);
   const [activeMoveChar, setActiveMoveChar] = useState<Character | null>(null);
 
   // ── 世界卷宗：当前世界派生数据 ──
@@ -1066,6 +1068,10 @@ function CharListView({
                 <IconPlus />
                 <span>NPC</span>
               </button>
+              <button className="wt-bottom-pill-btn" onClick={() => setShowCastingStudio(true)}>
+                <IconPlus />
+                <span>妃卡</span>
+              </button>
               <input
                 ref={fileRef} type="file" accept=".json,.png,image/png,application/json" className="hidden"
                 onChange={async (e) => {
@@ -1300,6 +1306,15 @@ function CharListView({
 
       </div>
       </PageShell>
+      {showCastingStudio && (
+        <CastingStudio
+          worldGroups={worldGroups}
+          initialWorldId={currentWorldId}
+          onClose={() => setShowCastingStudio(false)}
+          onSaved={() => onUpdateChars(loadCharacters())}
+          onNotice={onNotice}
+        />
+      )}
 
       {deleteConfirm && (
         <div
