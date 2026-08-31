@@ -7,6 +7,7 @@ import { getAudioBlob, markTrackPlayed } from "./music-storage";
 import { findPlayableMatch, getNeteaseLyrics, getNeteasePlayUrl, getNeteasePlayInfo, getNeteaseSongDetail } from "./music-service";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { registerMusicControlBridge } from "./music-control-bridge";
+import { MUSIC_TRACK_CHANGED_EVENT, type MusicTrackChangedDetail } from "./music-companion-storage";
 
 // ── Types ──
 
@@ -106,6 +107,12 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     const [showFullPlayer, setShowFullPlayer] = useState(false);
     const [floatDismissed, setFloatDismissed] = useState(false);
 
+    useEffect(() => {
+        if (!currentTrack || typeof window === "undefined") return;
+        const detail: MusicTrackChangedDetail = { trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, lyrics: currentTrack.lyrics, changedAt: Date.now() };
+        window.dispatchEvent(new CustomEvent(MUSIC_TRACK_CHANGED_EVENT, { detail }));
+    }, [currentTrack?.id]);
+
     // Persist queue on change.
     useEffect(() => {
         persistQueue(queue);
@@ -157,7 +164,7 @@ export function MusicProvider({ children }: { children: ReactNode }) {
                 if (mode === "repeat-one") {
                     nextTrack = prev;
                 } else if (mode === "shuffle") {
-                    const randomIdx = Math.floor(Math.random() * q.length);
+                    const randomIdx = q.length > 1 ? (idx + 1 + Math.floor(Math.random() * (q.length - 1))) % q.length : 0;
                     nextTrack = q[randomIdx];
                 } else {
                     // sequence
@@ -260,7 +267,7 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         const idx = queue.findIndex(t => t.id === currentTrack.id);
         let nextIdx: number;
         if (playMode === "shuffle") {
-            nextIdx = Math.floor(Math.random() * queue.length);
+            nextIdx = queue.length > 1 ? (idx + 1 + Math.floor(Math.random() * (queue.length - 1))) % queue.length : 0;
         } else {
             nextIdx = (idx + 1) % queue.length;
         }

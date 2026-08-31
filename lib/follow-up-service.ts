@@ -45,6 +45,18 @@ import {
     saveMenstrualPeriodCareTrigger,
     type MenstrualPeriodCareEvent,
 } from "./menstrual-storage";
+import {
+    MUSIC_COMPANION_REQUEST_EVENT,
+    MUSIC_COMPANION_PROGRESS_EVENT,
+    MUSIC_TRACK_CHANGED_EVENT,
+    loadMusicCompanion,
+    updateMusicCompanion,
+    type MusicTrackChangedDetail,
+    type MusicCompanionRequestDetail,
+} from "./music-companion-storage";
+import { chooseLibraryCandidates, ensureLyrics, filterPlayableTracks, representativeLyrics, saveRoleSongMemories, syncCompanionLibrary, type CompanionLibraryTrack } from "./music-companion-library";
+import { getMusicControlBridge } from "./music-control-bridge";
+import type { MusicTrack } from "./music-storage";
 
 // ── Constants ──────────────────────────────────────────────
 const MAX_FOLLOW_UPS = 10;
@@ -64,6 +76,10 @@ function resolveFollowUpSenderName(sessionId: string): string {
 // ── Module state ───────────────────────────────────────────
 let stopInterval: (() => void) | null = null;
 let periodCareUpdateHandler: (() => void) | null = null;
+let musicTrackChangedHandler: ((event: Event) => void) | null = null;
+let musicCompanionRequestHandler: ((event: Event) => void) | null = null;
+let musicReactionTimer: ReturnType<typeof setTimeout> | null = null;
+let musicPlanningFiring = false;
 const firingSet = new Set<string>(); // sessions currently mid-API-call
 const cancelledWhileFiring = new Set<string>(); // cancelled during in-flight API call
 const timedWakeFiringSet = new Set<string>();
@@ -83,16 +99,49 @@ export function startFollowUpService() {
             pollMenstrualPeriodCare(Date.now());
         };
         window.addEventListener("menstrual-period-care-updated", periodCareUpdateHandler);
+        musicTrackChangedHandler = handleMusicTrackChanged;
+        window.addEventListener(MUSIC_TRACK_CHANGED_EVENT, musicTrackChangedHandler);
+        musicCompanionRequestHandler = handleMusicCompanionRequest;
+        window.addEventListener(MUSIC_COMPANION_REQUEST_EVENT, musicCompanionRequestHandler);
     }
 }
 
 export function stopFollowUpService() {
     if (stopInterval) { stopInterval(); stopInterval = null; }
+    if (typeof window !== "undefined" && musicTrackChangedHandler) { window.removeEventListener(MUSIC_TRACK_CHANGED_EVENT, musicTrackChangedHandler); musicTrackChangedHandler = null; }
+    if (typeof window !== "undefined" && musicCompanionRequestHandler) { window.removeEventListener(MUSIC_COMPANION_REQUEST_EVENT, musicCompanionRequestHandler); musicCompanionRequestHandler = null; }
+    if (musicReactionTimer) { clearTimeout(musicReactionTimer); musicReactionTimer = null; }
     if (typeof window !== "undefined" && periodCareUpdateHandler) {
         window.removeEventListener("menstrual-period-care-updated", periodCareUpdateHandler);
         periodCareUpdateHandler = null;
     }
 }
+
+function compactMusicLyrics(raw: string | undefined, maxChars = 3200): string { if (!raw) return "（暂无歌词）"; const lines = raw.split(/\r?\n/).map(line => line.replace(/^(?:\[[^\]]+\])+\s*/, "").trim()).filter(line => line.length >= 2 && !/^(作词|作曲|编曲|制作人|纯音乐)/.test(line)); if (lines.length === 0) return "（暂无歌词）"; return lines.join("\n").slice(0, maxChars); }
+function parsePlannerJson<T>(raw: string): T | null { const cleaned = raw.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim(); const start = cleaned.indexOf("{"); const end = cleaned.lastIndexOf("}"); if (start < 0 || end <= start) return null; try { return JSON.parse(cleaned.slice(start, end + 1)) as T; } catch { return null; } }
+function plannerInstruction(sessionId: string, content: string): ChatMessage { return { id: `music_planner_${Date.now()}`, sessionId, role: "system", status: "sent", createdAt: new Date().toISOString(), mediaType: "system_instruction", content }; }
+function handleMusicCompanionRequest(event: Event): void { const detail = (event as CustomEvent<MusicCompanionRequestDetail>).detail; if (!detail?.sessionId || musicPlanningFiring) return; setTimeout(() => void prepareMusicCompanion(detail), 0); }
+
+async function prepareMusicCompanion(request: MusicCompanionRequestDetail): Promise<void> {
+    if (musicPlanningFiring) return; musicPlanningFiring = true; updateMusicCompanion({ status: "preparing", error: undefined });
+    try {
+        const session = loadChatSessions().find(item => item.id === request.sessionId); if (!session || session.isGroup || session.contactId !== request.characterId) throw new Error("陪听仅支持当前一对一角色");
+        const bridge = getMusicControlBridge(); if (!bridge) throw new Error("音乐播放器尚未加载，请先打开一次音乐App");
+        const latestMessages = loadChatMessages(session.id); const library = await syncCompanionLibrary(); let candidates = chooseLibraryCandidates(library, request.characterId, 80); if (candidates.length < 15) throw new Error("网易云曲库歌曲不足，请先登录并同步歌单"); candidates = await filterPlayableTracks(candidates); if (candidates.length < 15) throw new Error("当前账号可播放的候选歌曲不足，请检查网易云登录或版权限制"); candidates = await ensureLyrics(candidates);
+        const candidateText = candidates.map(track => [`ID=${track.id}｜${track.title}—${track.artist}`, `歌单=${track.playlistNames.slice(0, 3).join("/") || "未分类"}｜红心=${track.liked ? "是" : "否"}｜播放=${track.playCount}`, `歌词跨段摘录：${representativeLyrics(track.lyrics, 14) || "（无歌词/纯音乐）"}`].join("\n")).join("\n\n");
+        const first = flattenCompletionResult(await generateChatCompletion(session, [...latestMessages, plannerInstruction(session.id, ["【角色陪听选歌｜第一轮】", "你就是当前人物卡中的角色。根据你自己的审美、你们刚才的聊天、时间与关系，从下面约80首真实曲库候选中亲自筛选25首。", "你已经看到每首歌跨主歌/副歌/桥段/结尾的真实歌词摘录，不要只凭标题。兼顾情绪推进、歌手多样性与可听性。", "只输出严格JSON：{\"shortlist\":[歌曲数字ID...]}。不得调用工具，不得输出解释。", candidateText].join("\n\n"))], { appTags: ["chat", "text", "music_companion_planner"] }));
+        const parsedFirst = parsePlannerJson<{ shortlist?: Array<number | string> }>(first); const candidateMap = new Map(candidates.map(track => [String(track.id), track])); const shortlist = [...new Set((parsedFirst?.shortlist || []).map(String))].map(id => candidateMap.get(id)).filter(Boolean).slice(0, 30) as CompanionLibraryTrack[]; if (shortlist.length < request.count) throw new Error("角色没有成功选出足够候选，请重试一次");
+        const fullLyricsText = shortlist.map(track => [`ID=${track.id}｜${track.title}—${track.artist}`, compactMusicLyrics(track.lyrics, 3600) || "（无歌词/纯音乐）"].join("\n")).join("\n\n---\n\n");
+        const second = flattenCompletionResult(await generateChatCompletion(session, [...latestMessages, plannerInstruction(session.id, ["【角色陪听选歌｜最终编排】", `你已初筛这些歌曲，现在阅读完整歌词并最终挑选${request.count}首。顺序就是实际播放顺序，要像你亲自为对方编排一段完整的陪听过程。`, "多数歌曲应安静陪听。只有确实值得开口时才写message，最多28个汉字；不要介绍歌或分析歌词。", `只输出严格JSON：{\"tracks\":[{\"id\":数字ID,\"understanding\":\"你对这首歌的一句理解\",\"silent\":true或false,\"message\":\"可选\"}]}。tracks必须恰好${request.count}首，不得调用工具。`, fullLyricsText].join("\n\n"))], { appTags: ["chat", "text", "music_companion_planner"] }));
+        const parsedSecond = parsePlannerJson<{ tracks?: Array<{ id: number | string; understanding?: string; silent?: boolean; message?: string }> }>(second); const selectedRaw = parsedSecond?.tracks || []; const selected = selectedRaw.map(item => ({ item, track: candidateMap.get(String(item.id)) })).filter(entry => entry.track).slice(0, request.count) as Array<{ item: { id: number | string; understanding?: string; silent?: boolean; message?: string }; track: CompanionLibraryTrack }>; if (selected.length !== request.count) throw new Error("角色最终编排不完整，请重试一次");
+        if (request.mode === "shuffle") for (let i = selected.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [selected[i], selected[j]] = [selected[j], selected[i]]; }
+        const now = Date.now(); const queue: MusicTrack[] = selected.map(({ track }) => ({ id: `netease_${track.id}`, title: track.title, artist: track.artist, album: track.album, duration: 0, coverUrl: track.coverUrl, lyrics: track.lyrics, liked: track.liked, addedAt: new Date().toISOString() })); const plans = Object.fromEntries(selected.map(({ item, track }) => [`netease_${track.id}`, { trackId: `netease_${track.id}`, silent: item.silent !== false || !item.message?.trim(), ...(item.message?.trim() ? { message: item.message.trim().slice(0, 56) } : {}), expiresAt: now + 7 * 86_400_000 }]));
+        saveRoleSongMemories(request.characterId, selected.map(({ item, track }) => ({ trackId: String(track.id), understanding: item.understanding?.trim(), selectedCount: 1, lastSelectedAt: now }))); bridge.setPlayMode("sequence"); await bridge.addToQueue(queue, { replace: true, playFirst: true }); updateMusicCompanion({ status: "ready", selectedTrackIds: queue.map(track => track.id), plans }); window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_PROGRESS_EVENT, { detail: { status: "ready", count: queue.length, sessionId: session.id } }));
+    } catch (error) { const message = error instanceof Error ? error.message : String(error); console.warn("[MusicCompanion] Planning failed:", error); updateMusicCompanion({ status: "error", error: message }); pushChatMessage({ sessionId: request.sessionId, role: "system", content: `陪听准备失败：${message}` }); window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_PROGRESS_EVENT, { detail: { status: "error", error: message, sessionId: request.sessionId } })); } finally { musicPlanningFiring = false; }
+}
+
+function handleMusicTrackChanged(event: Event): void { const detail = (event as CustomEvent<MusicTrackChangedDetail>).detail; if (!detail?.trackId) return; const companion = loadMusicCompanion(); if (!companion?.active) return; updateMusicCompanion({ lastTrackId: detail.trackId }); if (musicReactionTimer) clearTimeout(musicReactionTimer); musicReactionTimer = setTimeout(() => { musicReactionTimer = null; fireCachedMusicCompanionReaction(detail); }, 28_000); }
+function fireCachedMusicCompanionReaction(detail: MusicTrackChangedDetail): void { const companion = loadMusicCompanion(); if (!companion?.active || companion.lastTrackId !== detail.trackId) return; const session = loadChatSessions().find(item => item.id === companion.sessionId); if (!session || session.isGroup || session.contactId !== companion.characterId) return; const latestMessages = loadChatMessages(session.id); const latestUser = [...latestMessages].reverse().find(message => message.role === "user"); if (latestUser && Date.parse(latestUser.createdAt) > detail.changedAt) return; const plan = companion.plans?.[detail.trackId]; if (!plan || plan.silent || !plan.message || plan.expiresAt < Date.now()) return; pushChatMessage({ sessionId: session.id, role: "assistant", content: plan.message, responseBatchId: createResponseBatchId(), rawResponseText: plan.message }); updateMusicCompanion({ lastReactedAt: Date.now() }); window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } })); }
 
 /** Schedule a follow-up for a session (called by ChatRoom after AI replies).
  *  Purely anxiety-driven: no anxiety field or below threshold → no follow-up. */

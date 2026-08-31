@@ -177,6 +177,10 @@ const MUSIC_CONTROL_USAGE_GUIDE = [
     "执行时必须使用下面的具体动作名，不要输出“网易云音乐”本身。",
     "",
     "【优先规则·重要】",
+    "- 当{{user}}明确说‘陪我听歌/一起听/陪我听一会儿’时，调用「开始陪听」。系统会读取{{user}}的完整网易云曲库，先给当前角色看约80首的真实歌词片段，再让当前角色阅读入围歌曲的完整歌词，亲自选出并编排15-20首。不要自己凭印象写5个歌名。",
+    "- 默认 mode=curated，严格按当前角色安排的顺序播放；只有{{user}}明确要求打乱时才用 mode=shuffle。随机只改变角色已选歌曲的顺序，不会加入角色没选的歌。",
+    "- 陪听反应按5首分组缓存，切歌不会逐首调用模型。保持克制，不要句句报歌名或解释歌词。",
+    "- 当{{user}}说‘先不听了/结束陪听/我自己听’时调用「结束陪听」。暂停音乐不等于结束陪听。",
     "- 想放某首歌 → 直接一步调「播放音乐」(传 query 即可)，禁止先调「查看音乐状态/音乐库概览/歌单歌曲」等查看动作来'勘察'。「播放音乐」自带搜索，无需任何前置查看。",
     "- 「查看××」这几个动作只在{{user}}明确问起时才用：问'我有哪些歌/歌单'→查看音乐库概览；问'现在放的是什么'→查看音乐状态。平时放歌一律不用。",
     "- 想直接放给{{user}}听 → 用「播放音乐」工具（真的会在 ta 手机上响起）；只有想'安利/推荐一首歌但不打断当前播放'时，才用 [音乐分享:歌名] 发卡片。{{user}}让你放歌时，默认用工具直接播放，不要只发分享卡片。",
@@ -240,6 +244,20 @@ const MUSIC_CONTROL_USAGE_GUIDE = [
     "  - action (string): next|prev|pause|resume|stop",
     "示例：",
     '[执行动作:切换音乐({"action":"next"})]',
+    "",
+    "动作：开始陪听",
+    "描述：读取完整曲库并由当前角色根据真实歌词选出、编排一轮歌曲。",
+    "参数：",
+    "  - count (number): 本轮挑选数量，15-20，默认18",
+    "  - mode (string): curated=角色编排，shuffle=在角色选好的歌曲中打乱；默认curated",
+    "示例：",
+    '[执行动作:开始陪听({"count":18,"mode":"curated"})]',
+    "",
+    "动作：结束陪听",
+    "描述：结束当前陪听会话；不会强制停止音乐。",
+    "参数：无",
+    "示例：",
+    "[执行动作:结束陪听({})]",
     "",
     "查看类动作会返回结果，你可以基于结果继续选择音乐。播放和切换会直接执行，执行时只输出执行动作指令，不要附加闲聊内容。",
 ].join("\n");
@@ -445,10 +463,13 @@ const MUSIC_QUEUE_PARAMETER_SCHEMA = JSON.stringify({
 const MUSIC_SWITCH_PARAMETER_SCHEMA = JSON.stringify({
     type: "object",
     properties: {
-        action: { type: "string", description: "next|prev|pause|resume|stop" },
+        action: { type: "string", description: "next|prev|pause|resume|stop|shuffle|sequence|repeat-one" },
     },
     required: ["action"],
 });
+
+const MUSIC_COMPANION_PARAMETER_SCHEMA = JSON.stringify({ type: "object", properties: { count: { type: "number", minimum: 15, maximum: 20, description: "本轮角色挑选歌曲数量，默认18" }, mode: { type: "string", enum: ["curated", "shuffle"], description: "curated按角色编排；shuffle仅打乱已选歌曲" } } });
+const MUSIC_COMPANION_EMPTY_PARAMETER_SCHEMA = JSON.stringify({ type: "object", properties: {} });
 
 const CALENDAR_LIST_PARAMETER_SCHEMA = JSON.stringify({
     type: "object",
@@ -550,6 +571,8 @@ const MUSIC_CONTROL_SUBTOOLS: InternalToolDefinition[] = [
         description: "控制当前播放器上一首、下一首、暂停、继续或停止。",
         parameterSchema: MUSIC_SWITCH_PARAMETER_SCHEMA,
     },
+    { name: "开始陪听", description: "由当前角色读取用户曲库与歌词，亲自挑选并编排一轮陪听。", parameterSchema: MUSIC_COMPANION_PARAMETER_SCHEMA },
+    { name: "结束陪听", description: "结束当前角色与用户的陪听会话。", parameterSchema: MUSIC_COMPANION_EMPTY_PARAMETER_SCHEMA },
 ];
 
 const CALENDAR_MANAGEMENT_SUBTOOLS: InternalToolDefinition[] = [

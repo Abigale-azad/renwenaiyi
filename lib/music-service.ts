@@ -230,9 +230,14 @@ export async function getNeteasePlayInfo(songId: number): Promise<NeteasePlayInf
     const base = neteaseBase();
     if (!base) return { url: null, trial: false, reason: "音乐 API 未配置" };
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/song/url?id=${songId}`));
-        const data = await resp.json();
-        const d = data?.data?.[0];
+        let resp = await fetch(withNeteaseParams(`${base}/song/url/v1?id=${songId}&level=standard&timestamp=${Date.now()}`));
+        let data = await resp.json();
+        let d = data?.data?.[0];
+        if (!d?.url) {
+            resp = await fetch(withNeteaseParams(`${base}/song/url?id=${songId}&timestamp=${Date.now()}`));
+            data = await resp.json();
+            d = data?.data?.[0];
+        }
         const url = d?.url;
         if (url && typeof url === "string") {
             // Netease returns http:// CDN links; on an HTTPS page the browser blocks

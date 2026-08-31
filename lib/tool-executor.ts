@@ -49,6 +49,7 @@ import type { NoteWallBoard, NoteWallComment, NoteWallNote, NoteWallSize } from 
 import { findNoteWallPlacement, normalizeNoteWallSize } from "./notewall-utils";
 import { recordNoteWallCommentEvent, recordNoteWallNoteEvent } from "./notewall-memory";
 import { getMusicControlBridge } from "./music-control-bridge";
+import { MUSIC_COMPANION_REQUEST_EVENT, loadMusicCompanion, startMusicCompanion, stopMusicCompanion, type MusicCompanionRequestDetail } from "./music-companion-storage";
 import { loadAllTracks, type MusicTrack } from "./music-storage";
 import {
     checkLoginStatus,
@@ -811,7 +812,9 @@ function isMusicControlToolName(name: string): boolean {
         || name === "搜索音乐"
         || name === "播放音乐"
         || name === "加入播放列表"
-        || name === "切换音乐";
+        || name === "切换音乐"
+        || name === "开始陪听"
+        || name === "结束陪听";
 }
 
 function isCalendarToolName(name: string): boolean {
@@ -1662,6 +1665,10 @@ async function executeMusicControlTool(call: ToolCall, context?: ToolExecutionCo
                 return await executeMusicQueueTool(call.args);
             case "切换音乐":
                 return executeMusicSwitchTool(call.args);
+            case "开始陪听":
+                return executeMusicCompanionStartTool(context, call.args);
+            case "结束陪听":
+                return executeMusicCompanionStopTool(context);
         }
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -2303,6 +2310,9 @@ function executeMusicSwitchTool(args: Record<string, unknown>): ToolResult {
         pause: "已暂停音乐",
         resume: "已继续播放",
         stop: "已停止播放",
+        shuffle: "已切换为随机播放",
+        sequence: "已切换为顺序播放",
+        "repeat-one": "已切换为单曲循环",
     };
     switch (normalizedAction) {
         case "next":
@@ -2322,14 +2332,34 @@ function executeMusicSwitchTool(args: Record<string, unknown>): ToolResult {
         case "stop":
             bridge.stop();
             break;
+        case "shuffle":
+        case "sequence":
+        case "repeat-one":
+            bridge.setPlayMode(normalizedAction);
+            break;
         default:
-            return { name: "切换音乐", success: false, error: "action 必须是 next、prev、pause、resume 或 stop" };
+            return { name: "切换音乐", success: false, error: "action 必须是 next、prev、pause、resume、stop、shuffle、sequence 或 repeat-one" };
     }
     return musicToolSuccess("切换音乐", labels[normalizedAction] || "已执行网易云音乐操作", {
         continueConversation: false,
         persistToHistory: false,
         userNotice: labels[normalizedAction] || "已执行网易云音乐操作",
     });
+}
+
+function executeMusicCompanionStartTool(context?: ToolExecutionContext, args: Record<string, unknown> = {}): ToolResult {
+    if (!context?.sessionId || !context.characterId || context.appId !== "chat" || context.sourceEngine !== "chat") return { name: "开始陪听", success: false, error: "陪听模式仅支持一对一聊天", userNotice: "陪听模式仅支持一对一聊天" };
+    startMusicCompanion(context.sessionId, context.characterId);
+    const detail: MusicCompanionRequestDetail = { sessionId: context.sessionId, characterId: context.characterId, requestedAt: Date.now(), mode: args.mode === "shuffle" ? "shuffle" : "curated", count: clampToolInteger(args.count, 15, 20, 18) };
+    window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_REQUEST_EVENT, { detail }));
+    return musicToolSuccess("开始陪听", "正在读取曲库与歌词，由当前角色亲自挑选并编排。", { userNotice: "正在从你的曲库里选歌…" });
+}
+
+function executeMusicCompanionStopTool(context?: ToolExecutionContext): ToolResult {
+    const current = loadMusicCompanion();
+    if (current && context?.characterId && current.characterId !== context.characterId) return { name: "结束陪听", success: false, error: "当前陪听会话属于其他角色", userNotice: "当前角色没有开启陪听" };
+    stopMusicCompanion();
+    return musicToolSuccess("结束陪听", "陪听模式已结束，音乐保持当前状态。", { userNotice: "已结束陪听模式" });
 }
 
 async function getMusicLoginSummary(): Promise<{ configured: boolean; loggedIn: boolean; nickname?: string }> {
