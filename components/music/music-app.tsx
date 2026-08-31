@@ -25,6 +25,10 @@ import {
     type NeteaseDjRadio, type NeteaseDjProgram, type NeteaseAlbumSub, type NeteaseUserEvent,
 } from "@/lib/music-service";
 import { clearMusicCloudSyncData } from "@/lib/chat-engine";
+import { loadChatSessions } from "@/lib/chat-storage";
+import { loadCharacters } from "@/lib/character-storage";
+import { getCompanionLibraryStats, syncCompanionLibrary, type CompanionLibraryStats, type CompanionSyncProgress } from "@/lib/music-companion-library";
+import { loadMusicCompanion, startMusicCompanion, MUSIC_COMPANION_PROGRESS_EVENT, MUSIC_COMPANION_REQUEST_EVENT, type MusicCompanionRequestDetail } from "@/lib/music-companion-storage";
 import MusicCommentsPage from "./music-comments";
 import {
     loadMusicBg, saveMusicBg, clearMusicBg, fileToCompressedDataUrl, appBgStyle,
@@ -40,6 +44,7 @@ export default function MusicApp({ onClose }: Props) {
     const [tab, setTab] = useState<TabId>("local");
     const [hasNetease, setHasNetease] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [showCompanionConsole, setShowCompanionConsole] = useState(false);
     const [showCssEditor, setShowCssEditor] = useState(false);
     const [customCss, setCustomCss] = useState("");
     const [activePlaylist, setActivePlaylist] = useState<NeteasePlaylist | null>(null);
@@ -310,6 +315,7 @@ export default function MusicApp({ onClose }: Props) {
                     {dailyView ? "每日推荐" : activePlaylist && tab === "recommend" ? "歌单详情" : tab === "recommend" ? "" : tab === "search" ? "搜索" : tab === "mine" ? "我的" : "本地音乐"}
                 </div>
                 <div className="music-header-right">
+                    <button className="music-header-action" onClick={() => setShowCompanionConsole(true)} title="陪听控制台"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 13v-1a8 8 0 0 1 16 0v1"/><path d="M4 13h2a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4v-7Zm16 0h-2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h2v-7Z"/></svg></button>
                     <button className="music-header-action" onClick={() => setShowSettings(true)} title="设置">
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                             <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -492,6 +498,7 @@ export default function MusicApp({ onClose }: Props) {
                     </div>
                 </div>
             )}
+            {showCompanionConsole && <div className="music-settings-modal-overlay" onClick={() => setShowCompanionConsole(false)}><div className="music-settings-modal-dialog" onClick={(e) => e.stopPropagation()}><MusicCompanionConsole onClose={() => setShowCompanionConsole(false)} onOpenSettings={() => { setShowCompanionConsole(false); setShowSettings(true); }} /></div></div>}
 
             {/* CSS Editor Modal */}
             {showCssEditor && (
@@ -503,6 +510,16 @@ export default function MusicApp({ onClose }: Props) {
             )}
         </div>
     );
+}
+
+function MusicCompanionConsole({ onClose, onOpenSettings }: { onClose: () => void; onOpenSettings: () => void }) {
+    const sessions = loadChatSessions().filter(item => !item.isGroup).sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)); const characterNames = new Map(loadCharacters().map(item => [item.id, item.name])); const [sessionId, setSessionId] = useState(sessions[0]?.id || ""); const [connectionText, setConnectionText] = useState("尚未检测"); const [stats, setStats] = useState<CompanionLibraryStats>({ trackCount: 0, lyricCount: 0 }); const [progress, setProgress] = useState({ percent: 0, text: "等待操作", status: "idle" }); const [busy, setBusy] = useState(false); const selected = sessions.find(item => item.id === sessionId); const refreshStats = useCallback(() => { void getCompanionLibraryStats().then(setStats); }, []);
+    useEffect(() => { refreshStats(); const state = loadMusicCompanion(); if (state?.status) setProgress({ percent: state.status === "ready" ? 100 : 0, text: state.error || (state.status === "ready" ? "上一轮陪听已准备好" : state.status === "preparing" ? "正在准备陪听" : "等待操作"), status: state.status }); }, [refreshStats]);
+    useEffect(() => { const handler = (event: Event) => { const detail = (event as CustomEvent<{ sessionId?: string; percent?: number; text?: string; status?: string }>).detail; if (!detail?.text || (sessionId && detail.sessionId !== sessionId)) return; setProgress({ percent: Math.max(0, Math.min(100, Math.round(detail.percent || 0))), text: detail.text, status: detail.status || "running" }); refreshStats(); }; window.addEventListener(MUSIC_COMPANION_PROGRESS_EVENT, handler); return () => window.removeEventListener(MUSIC_COMPANION_PROGRESS_EVENT, handler); }, [refreshStats, sessionId]);
+    const testConnection = async () => { setBusy(true); setConnectionText("正在检测 API 与账号…"); const cfg = loadMusicApiConfig(); const api = await testNeteaseConnection(cfg.baseUrl); if (!api.ok) { setConnectionText(`API 失败：${api.message}`); setBusy(false); return; } const login = await checkLoginStatus(cfg.baseUrl); const lists = login.loggedIn ? await getUserPlaylists().catch(() => []) : []; const liked = lists.find(item => item.specialType === 5) || lists.find(item => item.name.includes("喜欢的音乐")); setConnectionText(!login.loggedIn ? "API 已连接，但网易云账号未登录" : !liked ? `账号 ${login.nickname || "已登录"}，但没读取到“我喜欢的音乐”` : `已连接：${login.nickname || "网易云账号"} · 红心 ${liked.trackCount || "可读取"} 首`); setBusy(false); };
+    const syncLibrary = async () => { setBusy(true); try { await syncCompanionLibrary((item: CompanionSyncProgress) => { const ratio = item.total > 0 ? item.current / item.total : 1; setProgress({ percent: item.stage === "metadata" ? 5 : item.stage === "lyrics" ? 10 + Math.round(ratio * 80) : 100, text: item.text, status: item.stage === "done" ? "ready" : "running" }); }); refreshStats(); } catch (error) { setProgress({ percent: 100, text: error instanceof Error ? error.message : String(error), status: "error" }); } finally { setBusy(false); } };
+    const startCompanion = () => { if (!selected) { setProgress({ percent: 100, text: "请先选择一个一对一聊天角色", status: "error" }); return; } startMusicCompanion(selected.id, selected.contactId); setProgress({ percent: 1, text: "正在启动陪听", status: "running" }); const detail: MusicCompanionRequestDetail = { sessionId: selected.id, characterId: selected.contactId, requestedAt: Date.now(), mode: "curated", count: 18 }; window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_REQUEST_EVENT, { detail })); };
+    return <div className="music-settings"><div className="music-settings-header"><h2>陪听控制台</h2><button className="music-settings-close" onClick={onClose}>×</button></div><div className="music-settings-body"><div className="music-settings-section"><div className="music-settings-label">连接状态</div><div className="music-settings-hint">{connectionText}</div><div className="music-settings-actions" style={{marginTop:10}}><button className="music-settings-btn" onClick={testConnection} disabled={busy}>测试 API 与登录</button><button className="music-settings-btn" onClick={onOpenSettings}>网易云设置</button></div></div><div className="music-settings-section music-qr-section"><div className="music-settings-label">本地音乐认知库</div><div className="music-settings-hint">红心歌曲 {stats.trackCount} 首 · 已缓存歌词 {stats.lyricCount} 首<br/>上次同步：{stats.syncedAt ? new Date(stats.syncedAt).toLocaleString() : "从未同步"}</div><div className="music-settings-actions" style={{marginTop:10}}><button className="music-settings-btn" onClick={syncLibrary} disabled={busy}>{busy ? "处理中…" : "同步红心与歌词"}</button></div></div><div className="music-settings-section music-qr-section"><div className="music-settings-label">选择陪听角色</div><select className="music-settings-input" value={sessionId} onChange={e => setSessionId(e.target.value)}>{sessions.length === 0 && <option value="">没有一对一聊天</option>}{sessions.map(item => <option key={item.id} value={item.id}>{item.alias || characterNames.get(item.contactId) || "未命名角色"}</option>)}</select></div><div className={`music-settings-result ${progress.status === "error" ? "music-settings-result-err" : "music-settings-result-ok"}`}><div style={{display:"flex",justifyContent:"space-between",gap:12}}><span>{progress.text}</span><span>{Math.round(progress.percent)}%</span></div><div style={{height:7,marginTop:10,borderRadius:99,overflow:"hidden",background:"rgba(128,128,128,.22)"}}><div style={{width:`${progress.percent}%`,height:"100%",background:progress.status === "error" ? "#ef6b6b" : "var(--c-music-accent, #ff596d)"}}/></div></div><div className="music-settings-actions"><button className="music-settings-btn music-settings-btn-primary" onClick={startCompanion} disabled={!selected || busy}>开始陪听</button><button className="music-settings-btn" onClick={startCompanion} disabled={!selected || busy}>重新选一批</button></div></div></div>;
 }
 
 // ── Recommend Tab (home) ──
