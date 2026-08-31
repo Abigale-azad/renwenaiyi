@@ -2351,6 +2351,7 @@ function executeMusicCompanionStartTool(context?: ToolExecutionContext, args: Re
     if (!context?.sessionId || !context.characterId || context.appId !== "chat" || context.sourceEngine !== "chat") return { name: "开始陪听", success: false, error: "陪听模式仅支持一对一聊天", userNotice: "陪听模式仅支持一对一聊天" };
     const bridge = getMusicControlBridge();
     const previous = loadMusicCompanion();
+    if (args.force !== true && previous?.active && previous.sessionId === context.sessionId && previous.characterId === context.characterId && previous.status === "preparing" && Date.now() - previous.startedAt < 10 * 60 * 1000) return musicToolSuccess("开始陪听", "当前角色已经在读取曲库并选歌。", { userNotice: "正在选歌，请稍候…" });
     const queueIds = new Set(bridge?.getState().queue.map(track => String(track.id)) || []);
     const canResume = args.force !== true
         && previous?.active === true
