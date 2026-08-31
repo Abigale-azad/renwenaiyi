@@ -3820,13 +3820,14 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             const wantsFreshCompanion = /(?:重新|再|换)(?:选|挑)?一批/.test(currentText);
             const wantsMusicCompanion = wantsFreshCompanion || /陪我(?:一起)?听(?:歌|音乐|一会儿)|一起听(?:歌|音乐)|陪听模式/.test(currentText);
             const rejectsMusicCompanion = /(?:不要|不用|别|先不|结束|退出|停止).{0,5}(?:陪我听|一起听|陪听)/.test(currentText);
-            if (!session.isGroup && wantsMusicCompanion && !rejectsMusicCompanion) {
+            const handlesMusicCompanion = !session.isGroup && wantsMusicCompanion && !rejectsMusicCompanion;
+            if (handlesMusicCompanion) {
                 const bridge = getMusicControlBridge();
                 const previous = loadMusicCompanion();
                 const queueIds = new Set(bridge?.getState().queue.map(track => String(track.id)) || []);
                 const canResume = !wantsFreshCompanion && previous?.active === true && previous.sessionId === session.id && previous.characterId === session.contactId && previous.status === "ready" && Date.now() - previous.startedAt < 24 * 60 * 60 * 1000 && !!previous.selectedTrackIds?.length && previous.selectedTrackIds.every(id => queueIds.has(String(id)));
                 if (canResume && bridge) { bridge.resume(); showChatToast("继续上一轮陪听"); }
-                else if (!(previous?.status === "preparing" && previous.sessionId === session.id && previous.characterId === session.contactId)) { startMusicCompanion(session.id, session.contactId); const detail: MusicCompanionRequestDetail = { sessionId: session.id, characterId: session.contactId, requestedAt: Date.now(), mode: "curated", count: 18 }; window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_REQUEST_EVENT, { detail })); }
+                else if (!(previous?.status === "preparing" && previous.sessionId === session.id && previous.characterId === session.contactId)) { startMusicCompanion(session.id, session.contactId); setMusicCompanionProgress({ percent: 1, text: "正在启动陪听模式", status: "running" }); const detail: MusicCompanionRequestDetail = { sessionId: session.id, characterId: session.contactId, requestedAt: Date.now(), mode: "curated", count: 18 }; window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_REQUEST_EVENT, { detail })); }
             }
             if (diceOnly) {
                 const diceAside = pushChatMessage({
@@ -3836,7 +3837,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 });
                 setMessages(prev => [...prev, diceAside]);
             }
-            setPendingGenerate(true);
+            setPendingGenerate(!handlesMusicCompanion);
         };
 
         // 聊天插件织入点 user.beforeSend：无插件时走原同步路径，
