@@ -52,6 +52,7 @@ import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
 import { getMusicControlBridge } from "@/lib/music-control-bridge";
+import { MUSIC_COMPANION_PROGRESS_EVENT } from "@/lib/music-companion-storage";
 import { findPlayableMatch, getNeteaseLyrics, getNeteaseSongDetail } from "@/lib/music-service";
 import { approveMemoryWriteRequest } from "@/lib/tool-executor";
 import type { MemoryWriteRequest, ToolResult } from "@/lib/tool-executor";
@@ -1105,6 +1106,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [autoAuditionProgress, setAutoAuditionProgress] = useState<{ current: number; total: number; title: string } | null>(null);
     const autoAuditionStartedRef = useRef(false);
     const [chatToast, setChatToast] = useState<string | null>(null);
+    const [musicCompanionProgress, setMusicCompanionProgress] = useState<{ percent: number; text: string; status: string } | null>(null);
     const chatToastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
     const [cloudDeletePending, setCloudDeletePending] = useState<{ count: number } | null>(null);
     const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -1138,6 +1140,19 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         window.addEventListener(CHAT_APP_SETTINGS_UPDATED_EVENT, syncEnterToSend);
         return () => window.removeEventListener(CHAT_APP_SETTINGS_UPDATED_EVENT, syncEnterToSend);
     }, []);
+
+    useEffect(() => {
+        let clearTimer: ReturnType<typeof setTimeout> | undefined;
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<{ sessionId?: string; percent?: number; text?: string; status?: string }>).detail;
+            if (!detail || detail.sessionId !== session.id || !detail.text) return;
+            if (clearTimer) clearTimeout(clearTimer);
+            setMusicCompanionProgress({ percent: Math.max(0, Math.min(100, Math.round(detail.percent || 0))), text: detail.text, status: detail.status || "running" });
+            if (detail.status === "ready" || detail.status === "error") clearTimer = setTimeout(() => setMusicCompanionProgress(null), 3500);
+        };
+        window.addEventListener(MUSIC_COMPANION_PROGRESS_EVENT, handler);
+        return () => { window.removeEventListener(MUSIC_COMPANION_PROGRESS_EVENT, handler); if (clearTimer) clearTimeout(clearTimer); };
+    }, [session.id]);
 
     useEffect(() => {
         const syncCustomPlusActions = () => setCustomPlusActions(loadCustomAppChatPlusActions());
@@ -6572,6 +6587,20 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                 <span>{chatToast}</span>
                             </span>
                         ) : chatToast}
+                    </div>
+                </div>
+            )}
+
+            {musicCompanionProgress && (
+                <div className="chat-toast-overlay">
+                    <div className="wp-toast chat-toast-floating min-w-[260px] max-w-[82vw] !items-stretch !gap-2">
+                        <div className="flex items-center justify-between gap-4 text-sm">
+                            <span>{musicCompanionProgress.text}</span>
+                            <span className="shrink-0 tabular-nums opacity-70">{musicCompanionProgress.percent}%</span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/20">
+                            <div className={`h-full rounded-full transition-[width] duration-300 ${musicCompanionProgress.status === "error" ? "bg-red-400" : "bg-white"}`} style={{ width: `${musicCompanionProgress.percent}%` }} />
+                        </div>
                     </div>
                 </div>
             )}

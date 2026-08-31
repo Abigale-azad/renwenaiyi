@@ -2349,6 +2349,21 @@ function executeMusicSwitchTool(args: Record<string, unknown>): ToolResult {
 
 function executeMusicCompanionStartTool(context?: ToolExecutionContext, args: Record<string, unknown> = {}): ToolResult {
     if (!context?.sessionId || !context.characterId || context.appId !== "chat" || context.sourceEngine !== "chat") return { name: "开始陪听", success: false, error: "陪听模式仅支持一对一聊天", userNotice: "陪听模式仅支持一对一聊天" };
+    const bridge = getMusicControlBridge();
+    const previous = loadMusicCompanion();
+    const queueIds = new Set(bridge?.getState().queue.map(track => String(track.id)) || []);
+    const canResume = args.force !== true
+        && previous?.active === true
+        && previous.sessionId === context.sessionId
+        && previous.characterId === context.characterId
+        && previous.status === "ready"
+        && Date.now() - previous.startedAt < 24 * 60 * 60 * 1000
+        && !!previous.selectedTrackIds?.length
+        && previous.selectedTrackIds.every(id => queueIds.has(String(id)));
+    if (canResume && bridge) {
+        bridge.resume();
+        return musicToolSuccess("开始陪听", "已继续上一轮由当前角色挑选的歌单。", { userNotice: "继续上一轮陪听" });
+    }
     startMusicCompanion(context.sessionId, context.characterId);
     const detail: MusicCompanionRequestDetail = { sessionId: context.sessionId, characterId: context.characterId, requestedAt: Date.now(), mode: args.mode === "shuffle" ? "shuffle" : "curated", count: clampToolInteger(args.count, 15, 20, 18) };
     window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_REQUEST_EVENT, { detail }));
