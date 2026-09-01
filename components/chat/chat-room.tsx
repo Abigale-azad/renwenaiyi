@@ -47,7 +47,7 @@ import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp } from "@/lib/follow-up-service";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { AlertCircle, Blocks, Bookmark, Check, Copy, Download, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
+import { AlertCircle, Blocks, BookOpen, Bookmark, Check, Copy, Download, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -86,6 +86,7 @@ import { extractTextToolDirectiveText } from "@/lib/text-tool-protocol";
 import { emitChatPluginEvent, getChatPluginHookBus, runChatPluginTransform } from "@/lib/chat-plugin-hooks";
 import { CHAT_PLUGIN_TOAST_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
+import { ReadingCompanionPicker } from "./reading-companion-picker";
 
 // ── Call system message detection ──────────────────────────
 // Call messages are stored with user/assistant role for correct prompt alternation,
@@ -665,6 +666,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     onStartVideoCall: () => void;
     onStartVoiceCall: () => void;
     onStartMusicCompanion: () => void;
+    onOpenReadingCompanion: () => void;
     onSendText: (text: string) => boolean;
     onStopGeneration: () => void;
     onTriggerAIResponse: () => void;
@@ -697,6 +699,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     onStartVideoCall,
     onStartVoiceCall,
     onStartMusicCompanion,
+    onOpenReadingCompanion,
     onSendText,
     onStopGeneration,
     onTriggerAIResponse,
@@ -761,6 +764,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     const suggestEnabled = !inputLocked && !panelOpen && !suggestClosed && inputText.trim().length > 0;
     const plusMenuItems = [
         ...(!isGroup ? [{ icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 13v-1a8 8 0 0 1 16 0v1"/><path d="M4 13h2a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4v-7Zm16 0h-2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h2v-7Z"/></svg>, label: "陪听", onClick: onStartMusicCompanion }] : []),
+        ...(!isGroup ? [{ icon: <BookOpen size={22} strokeWidth={1.5} color="var(--c-text)" />, label: "共读", onClick: onOpenReadingCompanion }] : []),
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>, label: "照片墙", onClick: () => onOpenRichModal("photo") },
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="7" y1="8" x2="17" y2="8" /><line x1="7" y1="12" x2="14" y2="12" /><line x1="7" y1="16" x2="11" y2="16" /></svg>, label: "文字图片", onClick: () => onOpenRichModal("text_photo") },
         { icon: <AlertCircle size={22} strokeWidth={1.5} color="var(--c-text)" />, label: "系统指令", onClick: () => onOpenRichModal("system_instruction") },
@@ -1119,6 +1123,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const chatToastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
     const [cloudDeletePending, setCloudDeletePending] = useState<{ count: number } | null>(null);
     const [showPlusMenu, setShowPlusMenu] = useState(false);
+    const [showReadingCompanionPicker, setShowReadingCompanionPicker] = useState(false);
     const [customPlusActions, setCustomPlusActions] = useState<RegisteredCustomAppChatPlusAction[]>(() => loadCustomAppChatPlusActions());
     const [activeCustomChatPlus, setActiveCustomChatPlus] = useState<ActiveCustomChatPlus | null>(null);
     const [showSettings, setShowSettings] = useState(false);
@@ -6162,12 +6167,25 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 onStartVideoCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); setCallInitiator("user"); setShowVideoCall(true); }}
                 onStartVoiceCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); setCallInitiator("user"); setShowVoiceCall(true); }}
                 onStartMusicCompanion={() => { setShowPlusMenu(false); handleSendText("陪我听歌"); }}
+                onOpenReadingCompanion={() => { setShowPlusMenu(false); setShowReadingCompanionPicker(true); }}
                 onSendText={handleSendText}
                 onStopGeneration={clearStuckGeneration}
                 onTriggerAIResponse={triggerAIResponse}
                 onSendSticker={(name, url) => { setShowStickerPanel(false); sendRichMessage("sticker", { label: name, stickerUrl: url }); }}
             />
             ))}
+
+            {showReadingCompanionPicker ? (
+                <ReadingCompanionPicker
+                    characterId={session.contactId}
+                    characterName={character?.name || "对方"}
+                    onClose={() => setShowReadingCompanionPicker(false)}
+                    onChoose={(book) => {
+                        setShowReadingCompanionPicker(false);
+                        handleSendText(`陪我读书《${book.title}》`);
+                    }}
+                />
+            ) : null}
 
             {showConfirmMultiDelete && (
                 <ConfirmDialog

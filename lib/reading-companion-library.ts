@@ -174,6 +174,12 @@ export async function loadRoleProfile(characterId: string, bookId: string): Prom
     return (await db.roleProfiles.get(roleProfileKey(characterId, bookId))) ?? null;
 }
 
+export async function loadRoleProfilesForCharacter(characterId: string): Promise<CompanionRoleProfile[]> {
+    return (await db.roleProfiles.toArray())
+        .filter(profile => profile.characterId === characterId)
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
 export async function saveRoleProfile(profile: CompanionRoleProfile): Promise<void> {
     const next: CompanionRoleProfile = {
         ...profile,
