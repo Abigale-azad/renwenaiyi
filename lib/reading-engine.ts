@@ -51,7 +51,7 @@ function buildReadingBilingualInstruction(enabled: boolean, customPrompt?: strin
 
 // ── Resolve assembler input for reading context ──
 
-async function resolveReadingInput(
+export async function resolveReadingInput(
     characterId: string,
     appTags: string[],
     options: {
@@ -133,7 +133,7 @@ async function resolveReadingInput(
     return { input, apiConfig, preset };
 }
 
-async function callReadingLLM(
+export async function callReadingLLM(
     config: ApiConfig,
     preset: PresetConfig | null,
     messages: LLMMessage[],

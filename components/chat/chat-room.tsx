@@ -53,6 +53,8 @@ import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
 import { getMusicControlBridge } from "@/lib/music-control-bridge";
 import { loadMusicCompanion, startMusicCompanion, MUSIC_COMPANION_PROGRESS_EVENT, MUSIC_COMPANION_REQUEST_EVENT, type MusicCompanionRequestDetail } from "@/lib/music-companion-storage";
+import { detectReadingCompanionIntent, handleReadingCompanionIntent } from "@/lib/reading-companion-chat-handler";
+import { loadReadingCompanion } from "@/lib/reading-companion-storage";
 import { findPlayableMatch, getNeteaseLyrics, getNeteaseSongDetail } from "@/lib/music-service";
 import { approveMemoryWriteRequest } from "@/lib/tool-executor";
 import type { MemoryWriteRequest, ToolResult } from "@/lib/tool-executor";
@@ -206,6 +208,7 @@ const CHAT_VISUAL_MEDIA_TYPES = new Set([
     "location",
     "music_share",
     "music_companion_card",
+    "reading_companion_card",
     "xiaohongshu_note_share",
     "app_card",
     "audio",
@@ -255,6 +258,7 @@ const CHAT_MEDIA_BUBBLE_TYPES = new Set([
     "location",
     "music_share",
     "music_companion_card",
+    "reading_companion_card",
     "xiaohongshu_note_share",
     "app_card",
     "media_file",
@@ -3834,6 +3838,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 if (canResume && bridge) { bridge.resume(); showChatToast("继续上一轮陪听"); }
                 else if (!(previous?.status === "preparing" && previous.sessionId === session.id && previous.characterId === session.contactId)) { startMusicCompanion(session.id, session.contactId); setMusicCompanionProgress({ percent: 1, text: "正在启动陪听模式", status: "running" }); const detail: MusicCompanionRequestDetail = { sessionId: session.id, characterId: session.contactId, requestedAt: Date.now(), mode: "curated", count: 18 }; window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_REQUEST_EVENT, { detail })); }
             }
+            const readingIntent = detectReadingCompanionIntent(currentText);
+            const hasActiveReading = !!loadReadingCompanion()?.active;
+            const handlesReading = !session.isGroup && readingIntent !== "none" && (readingIntent === "start" || hasActiveReading);
+            if (handlesReading) void handleReadingCompanionIntent(readingIntent, currentText, session);
             if (diceOnly) {
                 const diceAside = pushChatMessage({
                     sessionId: session.id,
@@ -3842,7 +3850,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 });
                 setMessages(prev => [...prev, diceAside]);
             }
-            setPendingGenerate(!handlesMusicCompanion);
+            setPendingGenerate(!handlesMusicCompanion && !handlesReading);
         };
 
         // 聊天插件织入点 user.beforeSend：无插件时走原同步路径，
@@ -5920,8 +5928,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                 },
                                                 onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); },
                                             } : {})}
-                                            className={`chat-bubble-role-${msg.role} ${isMediaBubble ? "chat-bubble-media" : ""} ${isStandaloneHtmlPreview ? "chat-bubble-html-preview" : ""} ${renderMsg.mediaType === "music_share" ? "chat-bubble-music-share" : ""} ${renderMsg.mediaType === "gift" || renderMsg.mediaType === "image" || renderMsg.mediaType === "music_companion_card" || isStandaloneHtmlPreview ? "rounded-none" : "rounded-md"} break-words relative cursor-pointer select-none`}
-                                            style={isStandaloneHtmlPreview || renderMsg.mediaType === "music_companion_card" ? STANDALONE_CARD_BUBBLE_STYLE : undefined}
+                                            className={`chat-bubble-role-${msg.role} ${isMediaBubble ? "chat-bubble-media" : ""} ${isStandaloneHtmlPreview ? "chat-bubble-html-preview" : ""} ${renderMsg.mediaType === "music_share" ? "chat-bubble-music-share" : ""} ${renderMsg.mediaType === "gift" || renderMsg.mediaType === "image" || renderMsg.mediaType === "music_companion_card" || renderMsg.mediaType === "reading_companion_card" || isStandaloneHtmlPreview ? "rounded-none" : "rounded-md"} break-words relative cursor-pointer select-none`}
+                                            style={isStandaloneHtmlPreview || renderMsg.mediaType === "music_companion_card" || renderMsg.mediaType === "reading_companion_card" ? STANDALONE_CARD_BUBBLE_STYLE : undefined}
                                             data-ui={msg.role === "user" ? "bubble-user" : "bubble-bot"}
                                             data-msg-id={msg.id}
                                             {...(activeMessageId === msg.id ? { "data-active": "" } : {})}

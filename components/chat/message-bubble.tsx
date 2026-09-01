@@ -113,6 +113,8 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             return <MusicShareBubble msg={msg} onPlay={onMusicPlay} />;
         case "music_companion_card":
             return <MusicCompanionCardBubble msg={msg} onPlay={onMusicPlay} />;
+        case "reading_companion_card":
+            return <ReadingCompanionCardBubble msg={msg} />;
         case "media_file":
             return <MediaFileBubble msg={msg} onUpdate={onUpdate} characterId={characterId} />;
         case "xiaohongshu_note_share":
@@ -151,6 +153,9 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
         if (prev.msg.mediaData?.musicCompanionTitle !== next.msg.mediaData?.musicCompanionTitle) return false;
         if (prev.msg.mediaData?.musicCompanionThought !== next.msg.mediaData?.musicCompanionThought) return false;
         if (prev.msg.mediaData?.musicCompanionTracks !== next.msg.mediaData?.musicCompanionTracks) return false;
+        if (prev.msg.mediaData?.readingCompanionBook !== next.msg.mediaData?.readingCompanionBook) return false;
+        if (prev.msg.mediaData?.readingCompanionStats !== next.msg.mediaData?.readingCompanionStats) return false;
+        if (prev.msg.mediaData?.readingCompanionStatus !== next.msg.mediaData?.readingCompanionStatus) return false;
         if (prev.msg.mediaData?.imageGenerationPrompt !== next.msg.mediaData?.imageGenerationPrompt) return false;
         if (prev.msg.mediaData?.imageGenerationStatus !== next.msg.mediaData?.imageGenerationStatus) return false;
         if (prev.msg.mediaData?.imageGenerationError !== next.msg.mediaData?.imageGenerationError) return false;
@@ -210,6 +215,55 @@ function MusicCompanionCardBubble({ msg, onPlay }: { msg: ChatMessage; onPlay?: 
                     查看完整歌单与他的想法
                 </button>
             )}
+        </div>
+    );
+}
+
+function ReadingCompanionCardBubble({ msg }: { msg: ChatMessage }) {
+    const book = msg.mediaData?.readingCompanionBook;
+    const stats = msg.mediaData?.readingCompanionStats;
+    const status = msg.mediaData?.readingCompanionStatus;
+    const progress = typeof book?.progress === "number" ? Math.max(0, Math.min(100, book.progress)) : 0;
+    const lastSyncText = stats?.lastSyncAt
+        ? Math.max(0, Math.round((Date.now() - stats.lastSyncAt) / 60000)) + " 分钟前同步"
+        : "尚未同步";
+    const statusLine = status === "unconfigured"
+        ? "尚未连接微信读书，请先配置服务端密钥"
+        : status === "error"
+            ? "同步失败，稍后可以重新尝试"
+            : null;
+
+    return (
+        <div style={{ width: "min(82vw, 360px)", overflow: "hidden", borderRadius: 18, color: "#f6f1ea", background: "linear-gradient(155deg, #1f2a1f 0%, #161e16 55%, #0f140f 100%)", boxShadow: "0 16px 34px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08)" }}>
+            <div style={{ padding: 16, display: "flex", gap: 14, alignItems: "center" }}>
+                <div style={{ width: 64, height: 88, flex: "0 0 64px", overflow: "hidden", borderRadius: 10, background: "radial-gradient(circle at 35% 28%, #4a5a4a, #1a221a 68%)", boxShadow: "0 8px 20px rgba(0,0,0,.28)" }}>
+                    {book?.coverUrl ? (
+                        <img src={book.coverUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                        <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", fontFamily: "serif", fontSize: 26, color: "rgba(246,241,234,.6)" }}>{book?.title?.[0] || "书"}</div>
+                    )}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 10, letterSpacing: ".18em", color: "rgba(246,241,234,.5)" }}>READING TOGETHER</div>
+                    <div style={{ marginTop: 6, fontSize: 16, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{book?.title || "等待连接微信读书"}</div>
+                    <div style={{ marginTop: 4, fontSize: 12, color: "rgba(246,241,234,.58)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{book?.author || (status === "unconfigured" ? "连接后读取你的书架与划线" : "佚名")}</div>
+                    {book && (
+                        <>
+                            <div style={{ marginTop: 9, height: 4, borderRadius: 2, background: "rgba(255,255,255,.12)", overflow: "hidden" }}>
+                                <div style={{ width: progress + "%", height: "100%", background: "linear-gradient(90deg, #8fbf7f, #5d9e4f)" }} />
+                            </div>
+                            <div style={{ marginTop: 6, fontSize: 11, color: "rgba(246,241,234,.52)" }}>{progress}%{book.chapterTitle ? " · " + book.chapterTitle : ""}</div>
+                        </>
+                    )}
+                </div>
+            </div>
+            <div style={{ height: 1, margin: "0 16px", background: "linear-gradient(90deg, rgba(255,255,255,.03), rgba(255,255,255,.15), rgba(255,255,255,.03))" }} />
+            <div style={{ padding: "11px 16px 13px", display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: "rgba(246,241,234,.62)" }}>
+                <span>{lastSyncText}</span>
+                <span>新划线 {stats?.newHighlights ?? 0} 条</span>
+                <span>已聊 {stats?.discussionCount ?? 0} 次</span>
+            </div>
+            {statusLine && <div style={{ margin: "0 16px 13px", padding: "9px 12px", borderRadius: 10, background: "rgba(255,180,120,.08)", borderLeft: "2px solid rgba(225,184,153,.6)", fontSize: 12, color: "rgba(246,241,234,.8)" }}>{statusLine}</div>}
         </div>
     );
 }

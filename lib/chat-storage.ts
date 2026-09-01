@@ -98,6 +98,7 @@ export type ChatMessage = {
         | "accept_red_packet" | "decline_red_packet" | "accept_transfer" | "decline_transfer"
         | "payment_request" | "accept_payment_request" | "decline_payment_request"
         | "music" | "music_share" | "music_notify" | "music_not_found" | "music_companion_card"
+        | "reading_companion_card"
         | "xiaohongshu_note_share"
         | "gift"
         | "contact_card"
@@ -187,6 +188,20 @@ export type ChatMessage = {
             coverUrl?: string;
             understanding?: string;
         }>;
+        readingCompanionBook?: {
+            bookId: string;
+            title: string;
+            author?: string;
+            coverUrl?: string;
+            chapterTitle?: string;
+            progress?: number;
+        };
+        readingCompanionStats?: {
+            lastSyncAt?: number;
+            newHighlights?: number;
+            discussionCount?: number;
+        };
+        readingCompanionStatus?: "idle" | "syncing" | "ready" | "error" | "ended" | "unconfigured";
         xiaohongshuAuthor?: string;       // 小红书分享作者
         xiaohongshuTitle?: string;        // 小红书分享标题
         xiaohongshuBody?: string;         // 小红书分享正文
@@ -292,6 +307,7 @@ const MEDIA_PREVIEW_MAP: Record<string, string> = {
     music: "[音乐]",
     music_share: "[音乐分享]",
     music_companion_card: "[陪听歌单]",
+    reading_companion_card: "[共读]",
     xiaohongshu_note_share: "[小红书分享]",
     app_card: "[应用卡片]",
     tool_notice: "[执行动作]",
