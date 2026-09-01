@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getCurrentAccount } from "@/lib/server/account-auth";
 import { getWereadApiKey, wereadGatewayFetch, type WereadErrorCode } from "@/lib/server/weread-gateway";
+import { openWereadCredential, WEREAD_CREDENTIAL_COOKIE } from "@/lib/server/weread-credential";
 import {
     projectBookInfo,
     projectBookmarks,
@@ -57,15 +59,16 @@ function readBookId(body: Record<string, unknown>): string {
 
 export async function POST(request: NextRequest) {
     try {
-        if (!getWereadApiKey()) {
-            return fail("weread_unconfigured", "服务端未配置 WEREAD_API_KEY 环境变量，无法使用微信读书共读。");
-        }
+        const account = await getCurrentAccount(request);
+        if (!account) return NextResponse.json({ ok: false, error: { code: "weread_unauthorized", message: "请先登录小手机账号。" } }, { status: 401 });
+        const apiKey = getWereadApiKey() || openWereadCredential(request.cookies.get(WEREAD_CREDENTIAL_COOKIE)?.value || "", account.id);
+        if (!apiKey) return fail("weread_unconfigured", "请先到设置 → 微信读书共读连接账号。");
 
         const body = await request.json().catch(() => ({})) as Record<string, unknown>;
         const action = String(body.action ?? "").trim();
 
         if (action === "shelf") {
-            const result = await wereadGatewayFetch<unknown>("/shelf/sync");
+            const result = await wereadGatewayFetch<unknown>("/shelf/sync", {}, apiKey);
             if (!result.ok) return fail(result.code, result.message, result.errcode);
             return ok(projectShelf(result.data));
         }
@@ -75,7 +78,7 @@ export async function POST(request: NextRequest) {
             if (!keyword) return badRequest("缺少搜索关键词 keyword。");
             const countRaw = Number(body.count);
             const count = Number.isFinite(countRaw) ? Math.max(1, Math.min(MAX_SEARCH_COUNT, Math.round(countRaw))) : 15;
-            const result = await wereadGatewayFetch<unknown>("/store/search", { keyword, scope: 10, count });
+            const result = await wereadGatewayFetch<unknown>("/store/search", { keyword, scope: 10, count }, apiKey);
             if (!result.ok) return fail(result.code, result.message, result.errcode);
             return ok(projectSearch(result.data));
         }
@@ -83,7 +86,7 @@ export async function POST(request: NextRequest) {
         if (action === "bookInfo") {
             const bookId = readBookId(body);
             if (!bookId) return badRequest("缺少有效的 bookId。");
-            const result = await wereadGatewayFetch<unknown>("/book/info", { bookId });
+            const result = await wereadGatewayFetch<unknown>("/book/info", { bookId }, apiKey);
             if (!result.ok) return fail(result.code, result.message, result.errcode);
             return ok(projectBookInfo(bookId, result.data));
         }
@@ -91,7 +94,7 @@ export async function POST(request: NextRequest) {
         if (action === "chapters") {
             const bookId = readBookId(body);
             if (!bookId) return badRequest("缺少有效的 bookId。");
-            const result = await wereadGatewayFetch<unknown>("/book/chapterinfo", { bookId });
+            const result = await wereadGatewayFetch<unknown>("/book/chapterinfo", { bookId }, apiKey);
             if (!result.ok) return fail(result.code, result.message, result.errcode);
             return ok(projectChapters(result.data));
         }
@@ -99,7 +102,7 @@ export async function POST(request: NextRequest) {
         if (action === "progress") {
             const bookId = readBookId(body);
             if (!bookId) return badRequest("缺少有效的 bookId。");
-            const result = await wereadGatewayFetch<unknown>("/book/getprogress", { bookId });
+            const result = await wereadGatewayFetch<unknown>("/book/getprogress", { bookId }, apiKey);
             if (!result.ok) return fail(result.code, result.message, result.errcode);
             return ok(projectProgress(result.data));
         }
@@ -107,7 +110,7 @@ export async function POST(request: NextRequest) {
         if (action === "bookmarks") {
             const bookId = readBookId(body);
             if (!bookId) return badRequest("缺少有效的 bookId。");
-            const result = await wereadGatewayFetch<unknown>("/book/bookmarklist", { bookId });
+            const result = await wereadGatewayFetch<unknown>("/book/bookmarklist", { bookId }, apiKey);
             if (!result.ok) return fail(result.code, result.message, result.errcode);
             return ok(projectBookmarks(result.data));
         }
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest) {
         if (action === "reviews") {
             const bookId = readBookId(body);
             if (!bookId) return badRequest("缺少有效的 bookId。");
-            const result = await wereadGatewayFetch<unknown>("/review/list/mine", { bookid: bookId, count: 100 });
+            const result = await wereadGatewayFetch<unknown>("/review/list/mine", { bookid: bookId, count: 100 }, apiKey);
             if (!result.ok) return fail(result.code, result.message, result.errcode);
             return ok(projectReviews(result.data));
         }

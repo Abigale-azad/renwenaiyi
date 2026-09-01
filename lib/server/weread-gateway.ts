@@ -68,11 +68,12 @@ function describeNetworkError(err: unknown): { code: WereadErrorCode; message: s
 export async function wereadGatewayFetch<T>(
     apiName: string,
     params: Record<string, unknown> = {},
+    apiKeyOverride?: string | null,
 ): Promise<WereadGatewayResult<T>> {
     if (!WEREAD_ALLOWED_API_NAMES.has(apiName)) {
         return { ok: false, code: "weread_upstream_error", message: `微信读书接口 ${apiName} 不在允许列表内。` };
     }
-    const apiKey = getWereadApiKey();
+    const apiKey = apiKeyOverride?.trim() || getWereadApiKey();
     if (!apiKey) {
         return { ok: false, code: "weread_unconfigured", message: "服务端未配置 WEREAD_API_KEY 环境变量。" };
     }

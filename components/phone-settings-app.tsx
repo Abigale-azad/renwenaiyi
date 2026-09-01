@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, createContext, type CSSProperties, type ReactNode } from "react";
-import { Activity, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, Link2, Loader2, LogOut, MessageSquare, Mic, SlidersHorizontal, UserCircle, Wrench, X } from "lucide-react";
+import { Activity, BookOpen, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, Link2, Loader2, LogOut, MessageSquare, Mic, SlidersHorizontal, UserCircle, Wrench, X } from "lucide-react";
 import { ConfirmDialog } from "./ui/modal";
 import { useAccount } from "@/lib/account-context";
 import { changeAccountPassword } from "@/lib/account-client";
@@ -19,6 +19,7 @@ import { WeixinSettings } from "./settings/weixin-settings";
 import { ToolboxSettings } from "./settings/toolbox-settings";
 import { ModerationCenter } from "./settings/moderation-center";
 import { AgentComputerSettings } from "./settings/agent-computer-settings";
+import { WereadSettings } from "./settings/weread-settings";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
 import { PageShell } from "./ui/page-shell";
@@ -51,6 +52,7 @@ type SubPage =
     | "binding"
     | "identity"
     | "weixin"
+    | "weread"
     | "toolbox"
     | "agentComputer"
     | "moderation"
@@ -66,6 +68,7 @@ const SETTINGS_MENU = [
     { id: "data", icon: Layers, label: "数据管理", desc: "导入导出", iconColor: BINDING_ACCENTS.api },
     { id: "binding", icon: Link2, label: "配置绑定", desc: "管理全局默认、角色与应用的配置绑定关系", iconColor: BINDING_ACCENTS.identity },
     { id: "weixin", icon: MessageSquare, label: "微信接入", desc: "iLink Bot", iconColor: CONTENT_APP_ACCENTS.chat },
+    { id: "weread", icon: BookOpen, label: "微信读书共读", desc: "书架、进度与划线", iconColor: CONTENT_APP_ACCENTS.calendar },
     { id: "toolbox", icon: Wrench, label: "聊天工具箱", desc: "外部工具调用", iconColor: BINDING_ACCENTS.voice },
     { id: "agentComputer", icon: Laptop, label: "角色电脑", desc: "云端小电脑（自部署）", iconColor: BINDING_ACCENTS.memory },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity },
@@ -290,6 +293,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 return <BindingManager />;
             case "weixin":
                 return <WeixinSettings onOpenDataManagement={() => setCurrentPage("data")} />;
+            case "weread":
+                return <WereadSettings onNotice={onNotice} />;
             case "toolbox":
                 return <ToolboxSettings />;
             case "agentComputer":
@@ -389,7 +394,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                             <CardGrid
                                 label="Connections"
                                 labelClassName="settings-menu-section-title"
-                                items={SETTINGS_MENU.filter(item => ["weixin", "toolbox"].includes(item.id)).map(makeCardItem)}
+                                items={SETTINGS_MENU.filter(item => ["weixin", "weread", "toolbox"].includes(item.id)).map(makeCardItem)}
                             />
                             <div className="mt-[10px]">
                                 <FeaturedCard item={agentComputerFeaturedItem} />
