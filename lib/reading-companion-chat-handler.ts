@@ -26,7 +26,7 @@ export type ReadingCompanionIntent = "start" | "discuss" | "end" | "none";
 export function detectReadingCompanionIntent(text: string): ReadingCompanionIntent {
     // 结束优先匹配，避免"先不读了"被误判为开始
     if (/(?:先不|不再|不|别|结束|退出|停止)\s*(?:读了?|共读|读书)/.test(text)) return "end";
-    if (/聊聊(?:刚才)?(?:看|读)?的|聊聊(?:这本书|这书|此书)/.test(text)) return "discuss";
+    if (/聊聊(?:刚才)?(?:看|读)?的|聊聊(?:这本书|这书|此书)|(?:翻翻|看看|读读)(?:这本书|这书|此书)|你怎么看(?:这本书|这书|此书)/.test(text)) return "discuss";
     if (/陪我(?:一起)?读(?:书)|一起读(?:书)?|共读/.test(text)) return "start";
     return "none";
 }
@@ -148,8 +148,11 @@ export async function handleReadingCompanionIntent(
             ...(first.author ? { author: first.author } : {}),
             ...(first.cover ? { coverUrl: first.cover } : {}),
         });
-        pushCompanionCard(session, "idle");
-        void requestReadingCompanionSync();
+        const synced = await requestReadingCompanionSync();
+        pushCompanionCard(session, synced.ok ? "ready" : "error");
+        if (synced.ok) {
+            await handleReadingCompanionIntent("discuss", "聊聊这本书", session);
+        }
         return true;
     }
 

@@ -74,8 +74,27 @@ export function useMusicControlsOptional(): MusicControlsValue | null {
 // ── Queue persistence ──
 
 const QUEUE_STORAGE_KEY = "ai_phone_music_queue_v1";
+const PLAYBACK_CHECKPOINT_KEY = "ai_phone_music_checkpoint_v1";
 registerKvMigration(QUEUE_STORAGE_KEY);
+registerKvMigration(PLAYBACK_CHECKPOINT_KEY);
 const QUEUE_MAX_SIZE = 200;
+
+type PlaybackCheckpoint = {
+    track: MusicTrack;
+    currentTime: number;
+    playMode: PlayMode;
+    volume: number;
+    wasPlaying: boolean;
+    savedAt: number;
+};
+
+function loadPlaybackCheckpoint(): PlaybackCheckpoint | null {
+    if (typeof window === "undefined") return null;
+    try {
+        const parsed = JSON.parse(kvGet(PLAYBACK_CHECKPOINT_KEY) || "null") as Partial<PlaybackCheckpoint> | null;
+        return parsed?.track?.id && Number.isFinite(parsed.currentTime) ? parsed as PlaybackCheckpoint : null;
+    } catch { return null; }
+}
 
 function loadPersistedQueue(): MusicTrack[] {
     if (typeof window === "undefined") return [];
@@ -97,19 +116,28 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const blobUrlRef = useRef<string | null>(null);
 
-    const [currentTrack, setCurrentTrack] = useState<MusicTrack | null>(null);
+    const initialCheckpointRef = useRef<PlaybackCheckpoint | null>(loadPlaybackCheckpoint());
+    const [currentTrack, setCurrentTrack] = useState<MusicTrack | null>(() => initialCheckpointRef.current?.track || null);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [currentTime, setCurrentTime] = useState(0);
+    const [currentTime, setCurrentTime] = useState(() => initialCheckpointRef.current?.currentTime || 0);
     const [duration, setDuration] = useState(0);
-    const [playMode, setPlayMode] = useState<PlayMode>("sequence");
+    const [playMode, setPlayMode] = useState<PlayMode>(() => initialCheckpointRef.current?.playMode || "sequence");
     const [queue, setQueueRaw] = useState<MusicTrack[]>(() => loadPersistedQueue());
-    const [volume, setVolumeState] = useState(0.8);
+    const [volume, setVolumeState] = useState(() => initialCheckpointRef.current?.volume ?? 0.8);
     const [showFullPlayer, setShowFullPlayer] = useState(false);
     const [floatDismissed, setFloatDismissed] = useState(false);
 
+    // Let the quiet companion service observe real song changes without
+    // coupling the player to chat or to any specific character.
     useEffect(() => {
         if (!currentTrack || typeof window === "undefined") return;
-        const detail: MusicTrackChangedDetail = { trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, lyrics: currentTrack.lyrics, changedAt: Date.now() };
+        const detail: MusicTrackChangedDetail = {
+            trackId: currentTrack.id,
+            title: currentTrack.title,
+            artist: currentTrack.artist,
+            lyrics: currentTrack.lyrics,
+            changedAt: Date.now(),
+        };
         window.dispatchEvent(new CustomEvent(MUSIC_TRACK_CHANGED_EVENT, { detail }));
     }, [currentTrack?.id]);
 
@@ -117,6 +145,36 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         persistQueue(queue);
     }, [queue]);
+
+    const saveCheckpoint = useCallback((override?: { time?: number; playing?: boolean }) => {
+        if (!currentTrack) return;
+        const audio = audioRef.current;
+        const time = override?.time ?? (audio && Number.isFinite(audio.currentTime) ? audio.currentTime : currentTime);
+        const checkpoint: PlaybackCheckpoint = {
+            track: currentTrack,
+            currentTime: Math.max(0, time || 0),
+            playMode,
+            volume,
+            wasPlaying: override?.playing ?? Boolean(audio && !audio.paused),
+            savedAt: Date.now(),
+        };
+        try { kvSet(PLAYBACK_CHECKPOINT_KEY, JSON.stringify(checkpoint)); } catch { /* ignore */ }
+    }, [currentTrack, currentTime, playMode, volume]);
+
+    useEffect(() => {
+        if (!currentTrack) return;
+        const timer = window.setInterval(() => saveCheckpoint(), 2500);
+        const onPageHide = () => saveCheckpoint();
+        const onVisibility = () => { if (document.visibilityState === "hidden") saveCheckpoint(); };
+        window.addEventListener("pagehide", onPageHide);
+        document.addEventListener("visibilitychange", onVisibility);
+        return () => {
+            clearInterval(timer);
+            window.removeEventListener("pagehide", onPageHide);
+            document.removeEventListener("visibilitychange", onVisibility);
+            saveCheckpoint();
+        };
+    }, [currentTrack, saveCheckpoint]);
 
     /** Wrapped setQueue with max size enforcement */
     const setQueue = useCallback((tracks: MusicTrack[]) => {
@@ -126,7 +184,7 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     // Initialize audio element once
     useEffect(() => {
         const audio = new Audio();
-        audio.volume = 0.8;
+        audio.volume = volume;
         audioRef.current = audio;
 
         audio.addEventListener("timeupdate", () => {
@@ -164,7 +222,9 @@ export function MusicProvider({ children }: { children: ReactNode }) {
                 if (mode === "repeat-one") {
                     nextTrack = prev;
                 } else if (mode === "shuffle") {
-                    const randomIdx = q.length > 1 ? (idx + 1 + Math.floor(Math.random() * (q.length - 1))) % q.length : 0;
+                    const randomIdx = q.length > 1
+                        ? (idx + 1 + Math.floor(Math.random() * (q.length - 1))) % q.length
+                        : 0;
                     nextTrack = q[randomIdx];
                 } else {
                     // sequence
@@ -194,7 +254,7 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    const loadAndPlay = useCallback(async (track: MusicTrack) => {
+    const loadAndPlay = useCallback(async (track: MusicTrack, startAt = 0) => {
         const audio = audioRef.current;
         if (!audio) return;
 
@@ -220,7 +280,18 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         }
 
         setCurrentTrack(track);
-        setCurrentTime(0);
+        const safeStart = Math.max(0, Number.isFinite(startAt) ? startAt : 0);
+        if (safeStart > 0) {
+            const seekWhenReady = () => {
+                const max = Number.isFinite(audio.duration) && audio.duration > 0 ? Math.max(0, audio.duration - 0.25) : safeStart;
+                audio.currentTime = Math.min(safeStart, max);
+                setCurrentTime(audio.currentTime);
+            };
+            if (audio.readyState >= 1) seekWhenReady();
+            else audio.addEventListener("loadedmetadata", seekWhenReady, { once: true });
+        } else {
+            setCurrentTime(0);
+        }
 
         try {
             await audio.play();
@@ -248,12 +319,19 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     }, [cleanupBlobUrl]);
 
     const pause = useCallback(() => {
+        saveCheckpoint({ playing: false });
         audioRef.current?.pause();
-    }, []);
+    }, [saveCheckpoint]);
 
     const resume = useCallback(() => {
-        audioRef.current?.play().catch(() => {});
-    }, []);
+        const audio = audioRef.current;
+        if (!audio) return;
+        if ((!audio.src || audio.src === window.location.href) && currentTrack) {
+            void loadAndPlay(currentTrack, currentTime);
+            return;
+        }
+        audio.play().catch(() => {});
+    }, [currentTrack, currentTime, loadAndPlay]);
 
     const togglePlay = useCallback(() => {
         const audio = audioRef.current;
@@ -267,7 +345,9 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         const idx = queue.findIndex(t => t.id === currentTrack.id);
         let nextIdx: number;
         if (playMode === "shuffle") {
-            nextIdx = queue.length > 1 ? (idx + 1 + Math.floor(Math.random() * (queue.length - 1))) % queue.length : 0;
+            nextIdx = queue.length > 1
+                ? (idx + 1 + Math.floor(Math.random() * (queue.length - 1))) % queue.length
+                : 0;
         } else {
             nextIdx = (idx + 1) % queue.length;
         }
@@ -320,6 +400,7 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         setCurrentTime(0);
         setDuration(0);
         setShowFullPlayer(false);
+        kvSet(PLAYBACK_CHECKPOINT_KEY, "");
     }, [cleanupBlobUrl]);
 
     const removeFromQueue = useCallback((trackId: string) => {

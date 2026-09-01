@@ -2703,11 +2703,26 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     };
 
     // ── Music Card Click-to-Play ──
-    const handleMusicCardPlay = async (title: string, artist?: string) => {
+    const handleMusicCardPlay = async (title: string, artist?: string, trackId?: string, coverUrl?: string) => {
         const musicBridge = getMusicControlBridge();
         if (!musicBridge) { showChatToast("音乐播放器未就绪"); return; }
         showPersistentChatToast("加载音乐中...");
         try {
+            const directId = Number(String(trackId || "").replace(/^netease_/, ""));
+            if (Number.isFinite(directId) && directId > 0) {
+                const played = await musicBridge.playTrack({
+                    id: `netease_${directId}`,
+                    title,
+                    artist: artist || "未知歌手",
+                    coverUrl,
+                    duration: 0,
+                    liked: false,
+                    addedAt: new Date().toISOString(),
+                });
+                if (!played.ok) { showChatToast(played.message); return; }
+                clearChatToast();
+                return;
+            }
             const found = await findPlayableMatch(title, artist);
             if (!found) {
                 showChatToast("没有找到该音乐哦~");

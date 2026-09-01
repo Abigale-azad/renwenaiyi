@@ -760,6 +760,42 @@ export async function addTracksToPlaylist(playlistId: number, trackIds: number[]
     }
 }
 
+/** Create a Netease playlist owned by the logged-in user. */
+export async function createNeteasePlaylist(name: string): Promise<{ ok: boolean; message: string; playlistId?: number }> {
+    const base = neteaseBase();
+    if (!base) return { ok: false, message: "API 未配置" };
+    if (!loadNeteaseCookie()) return { ok: false, message: "请先登录网易云账号" };
+    const cleanName = name.trim().slice(0, 40);
+    if (!cleanName) return { ok: false, message: "歌单名称不能为空" };
+    try {
+        const resp = await fetch(withNeteaseParams(`${base}/playlist/create?name=${encodeURIComponent(cleanName)}&privacy=0&timestamp=${Date.now()}`));
+        const data = await resp.json();
+        const playlistId = Number(data?.id ?? data?.playlist?.id);
+        if ((data?.code === 200 || data?.status === 200) && Number.isFinite(playlistId) && playlistId > 0) {
+            return { ok: true, message: "歌单已创建", playlistId };
+        }
+        return { ok: false, message: data?.message || data?.msg || "创建歌单失败" };
+    } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : "创建歌单失败" };
+    }
+}
+
+/** Update only the text description of a Netease playlist. */
+export async function updateNeteasePlaylistDescription(playlistId: number, description: string): Promise<{ ok: boolean; message: string }> {
+    const base = neteaseBase();
+    if (!base) return { ok: false, message: "API 未配置" };
+    if (!loadNeteaseCookie()) return { ok: false, message: "请先登录网易云账号" };
+    try {
+        const desc = description.trim().slice(0, 900);
+        const resp = await fetch(withNeteaseParams(`${base}/playlist/desc/update?id=${playlistId}&desc=${encodeURIComponent(desc)}&timestamp=${Date.now()}`));
+        const data = await resp.json();
+        if (data?.code === 200 || data?.status === 200) return { ok: true, message: "歌单说明已写入" };
+        return { ok: false, message: data?.message || data?.msg || "歌单说明写入失败" };
+    } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : "歌单说明写入失败" };
+    }
+}
+
 /** Remove tracks from a Netease playlist */
 export async function removeTracksFromPlaylist(playlistId: number, trackIds: number[]): Promise<{ ok: boolean; message: string }> {
     const base = neteaseBase();

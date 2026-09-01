@@ -18,7 +18,7 @@ import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { createPortal } from "react-dom";
-import { Blocks, Maximize2, ReceiptText } from "lucide-react";
+import { Blocks, Download, Loader2, Maximize2, ReceiptText, Save, X } from "lucide-react";
 import { retryChatGeneratedImage } from "@/lib/generated-image-retry";
 import { ScanPayCard } from "@/components/chat/scan-pay-card";
 import { payWithWalletBalance } from "@/lib/wallet-storage";
@@ -26,6 +26,7 @@ import { formatShoppingPaymentRequestHistory } from "@/lib/shopping-payment-requ
 import { toCustomAppIconId } from "@/lib/custom-app-types";
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
 import { CHAT_PLUGIN_SLOTS_CHANGED_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
+import { addTracksToPlaylist, createNeteasePlaylist, updateNeteasePlaylistDescription } from "@/lib/music-service";
 
 interface MessageBubbleProps {
     msg: ChatMessage;
@@ -36,7 +37,7 @@ interface MessageBubbleProps {
     groupSize?: number;
     onShowDetail?: (msg: ChatMessage) => void;
     characterId?: string;
-    onMusicPlay?: (title: string, artist?: string) => void;
+    onMusicPlay?: (title: string, artist?: string, trackId?: string, coverUrl?: string) => void;
     onActionSelect?: (text: string) => void;
     displayContent?: string;
     defaultTranslationExpanded?: boolean;
@@ -170,12 +171,64 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
     return true;
 });
 
-function MusicCompanionCardBubble({ msg, onPlay }: { msg: ChatMessage; onPlay?: (title: string, artist?: string) => void }) {
+function MusicCompanionCardBubble({ msg, onPlay }: { msg: ChatMessage; onPlay?: (title: string, artist?: string, trackId?: string, coverUrl?: string) => void }) {
     const [expanded, setExpanded] = useState(false);
+    const [saveOpen, setSaveOpen] = useState(false);
+    const [playlistName, setPlaylistName] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [notice, setNotice] = useState("");
     const tracks = msg.mediaData?.musicCompanionTracks || [];
     const title = msg.mediaData?.musicCompanionTitle?.trim() || "这次想和你听";
     const thought = msg.mediaData?.musicCompanionThought?.trim();
     const covers = tracks.filter(track => track.coverUrl).slice(0, 4);
+
+    const description = useMemo(() => {
+        const lines = [thought || "这是角色为你挑选的一次陪听歌单。", ""];
+        tracks.forEach((track, index) => {
+            if (!track.understanding?.trim()) return;
+            lines.push(`${String(index + 1).padStart(2, "0")}《${track.title}》：${track.understanding.trim()}`);
+        });
+        return lines.join("\n").slice(0, 900);
+    }, [thought, tracks]);
+
+    const saveToNetease = async () => {
+        if (saving) return;
+        const ids = tracks.map(track => Number(String(track.trackId).replace(/^netease_/, ""))).filter(id => Number.isFinite(id) && id > 0);
+        if (!ids.length) { setNotice("这张卡片没有可写入网易云的歌曲 ID"); return; }
+        setSaving(true);
+        setNotice("正在创建网易云歌单…");
+        const created = await createNeteasePlaylist(playlistName.trim() || title);
+        if (!created.ok || !created.playlistId) { setNotice(created.message); setSaving(false); return; }
+        setNotice("歌单已创建，正在加入歌曲…");
+        const added = await addTracksToPlaylist(created.playlistId, ids);
+        if (!added.ok) { setNotice(`歌单已创建，但歌曲写入失败：${added.message}`); setSaving(false); return; }
+        const described = await updateNeteasePlaylistDescription(created.playlistId, description);
+        setNotice(described.ok ? `已保存到网易云：${playlistName.trim() || title}` : `歌曲已保存，说明写入失败：${described.message}`);
+        setSaving(false);
+    };
+
+    const saveAsImage = async () => {
+        setNotice("正在生成完整长图…");
+        try {
+            const blob = await renderCompanionPlaylistImage(title, thought, tracks);
+            const fileName = `${title.replace(/[\\/:*?"<>|]/g, "_") || "陪听歌单"}.png`;
+            const file = new File([blob], fileName, { type: "image/png" });
+            if (navigator.share && navigator.canShare?.({ files: [file] })) {
+                await navigator.share({ files: [file], title });
+                setNotice("长图已生成");
+            } else {
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = fileName;
+                anchor.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                setNotice("长图已下载");
+            }
+        } catch {
+            setNotice("长图生成失败，请稍后再试");
+        }
+    };
 
     return (
         <div style={{ width: "min(78vw, 350px)", overflow: "hidden", borderRadius: 20, color: "#f6f1ea", background: "linear-gradient(148deg, #242323 0%, #171719 55%, #111114 100%)", boxShadow: "0 16px 34px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08)" }}>
@@ -200,7 +253,7 @@ function MusicCompanionCardBubble({ msg, onPlay }: { msg: ChatMessage; onPlay?: 
             <div style={{ height: 1, margin: "0 16px", background: "linear-gradient(90deg, rgba(255,255,255,.03), rgba(255,255,255,.15), rgba(255,255,255,.03))" }} />
             <div style={{ maxHeight: expanded ? 360 : 154, overflowY: expanded ? "auto" : "hidden", padding: "7px 10px 10px" }}>
                 {tracks.map((track, index) => (
-                    <button key={track.trackId} type="button" onClick={(event) => { event.stopPropagation(); onPlay?.(track.title, track.artist); }} style={{ width: "100%", display: "grid", gridTemplateColumns: "25px minmax(0,1fr)", gap: 9, border: 0, padding: "9px 7px", borderRadius: 12, background: "transparent", color: "inherit", textAlign: "left", cursor: onPlay ? "pointer" : "default" }}>
+                    <button key={track.trackId} type="button" onClick={(event) => { event.stopPropagation(); onPlay?.(track.title, track.artist, track.trackId, track.coverUrl); }} style={{ width: "100%", display: "grid", gridTemplateColumns: "25px minmax(0,1fr)", gap: 9, border: 0, padding: "9px 7px", borderRadius: 12, background: "transparent", color: "inherit", textAlign: "left", cursor: onPlay ? "pointer" : "default" }}>
                         <span style={{ paddingTop: 2, fontSize: 11, textAlign: "right", color: index === 0 ? "#e1b899" : "rgba(246,241,234,.36)", fontVariantNumeric: "tabular-nums" }}>{String(index + 1).padStart(2, "0")}</span>
                         <span style={{ minWidth: 0 }}>
                             <span style={{ display: "block", fontSize: 13, fontWeight: 560, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</span>
@@ -215,8 +268,67 @@ function MusicCompanionCardBubble({ msg, onPlay }: { msg: ChatMessage; onPlay?: 
                     查看完整歌单与他的想法
                 </button>
             )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 12px 13px" }}>
+                <button type="button" onClick={(event) => { event.stopPropagation(); setPlaylistName(title); setSaveOpen(true); }} style={musicCardActionStyle}><Save size={14} />保存到网易云</button>
+                <button type="button" onClick={(event) => { event.stopPropagation(); void saveAsImage(); }} style={musicCardActionStyle}><Download size={14} />保存长图</button>
+            </div>
+            {notice && !saveOpen ? <div style={{ padding: "0 14px 13px", fontSize: 11, color: "rgba(246,241,234,.68)" }}>{notice}</div> : null}
+            {saveOpen ? createPortal(
+                <div className="modal-overlay modal-overlay-bottom" data-ui="modal" onClick={() => !saving && setSaveOpen(false)}>
+                    <div className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
+                        <div className="modal-header" data-ui="modal-header">
+                            <button className="modal-header-btn modal-header-btn-muted" onClick={() => setSaveOpen(false)} disabled={saving}><X size={18} /></button>
+                            <h3 className="modal-title">保存到网易云</h3><span style={{ width: 44 }} />
+                        </div>
+                        <div className="modal-body" data-ui="modal-body">
+                            <label className="ts-12 opacity-60">歌单名称</label>
+                            <input className="ui-input mt-2 w-full" value={playlistName} onChange={event => setPlaylistName(event.target.value)} maxLength={40} />
+                            <label className="mt-4 block ts-12 opacity-60">歌单说明预览</label>
+                            <textarea className="ui-input mt-2 w-full" style={{ minHeight: 150, resize: "vertical" }} value={description} readOnly />
+                            {notice ? <p className="mt-3 ts-12">{notice}</p> : null}
+                            <button className="ui-btn ui-btn-primary mt-4 w-full" onClick={() => void saveToNetease()} disabled={saving || !playlistName.trim()}>{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}确认保存</button>
+                        </div>
+                    </div>
+                </div>, document.body) : null}
         </div>
     );
+}
+
+const musicCardActionStyle: React.CSSProperties = { border: "1px solid rgba(255,255,255,.1)", borderRadius: 12, padding: "9px 7px", background: "rgba(255,255,255,.055)", color: "inherit", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, cursor: "pointer" };
+
+async function renderCompanionPlaylistImage(title: string, thought: string | undefined, tracks: NonNullable<ChatMessage["mediaData"]>["musicCompanionTracks"]): Promise<Blob> {
+    const rows = tracks || [];
+    const width = 900;
+    const lineHeight = 32;
+    const wrap = (text: string, maxChars: number) => text.match(new RegExp(`.{1,${maxChars}}`, "g")) || [""];
+    const thoughtLines = wrap(thought || "这次想和你听。", 38);
+    const trackLines = rows.map(track => ({ track, reason: wrap(track.understanding || "", 43) }));
+    const height = 250 + thoughtLines.length * 38 + trackLines.reduce((sum, item) => sum + 62 + Math.max(0, item.reason.length - 1) * lineHeight, 0) + 100;
+    const canvas = document.createElement("canvas");
+    canvas.width = width * 2; canvas.height = height * 2;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas unavailable");
+    ctx.scale(2, 2);
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, "#292525"); gradient.addColorStop(.55, "#181719"); gradient.addColorStop(1, "#0e0e11");
+    ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#d7b090"; ctx.font = "22px sans-serif"; ctx.fillText("PRIVATE LISTENING", 64, 68);
+    ctx.fillStyle = "#f6f1ea"; ctx.font = "bold 42px sans-serif"; ctx.fillText(title.slice(0, 28), 64, 126);
+    ctx.fillStyle = "rgba(246,241,234,.72)"; ctx.font = "24px serif";
+    let y = 178;
+    for (const line of thoughtLines) { ctx.fillText(line, 64, y); y += 38; }
+    y += 34; ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.beginPath(); ctx.moveTo(64, y); ctx.lineTo(width - 64, y); ctx.stroke(); y += 45;
+    for (let i = 0; i < trackLines.length; i++) {
+        const { track, reason } = trackLines[i];
+        ctx.fillStyle = i === 0 ? "#d7b090" : "rgba(246,241,234,.45)"; ctx.font = "20px monospace"; ctx.fillText(String(i + 1).padStart(2, "0"), 64, y);
+        ctx.fillStyle = "#f6f1ea"; ctx.font = "bold 25px sans-serif"; ctx.fillText(track.title.slice(0, 34), 120, y);
+        ctx.fillStyle = "rgba(246,241,234,.55)"; ctx.font = "19px sans-serif"; ctx.fillText(track.artist.slice(0, 42), 120, y + 29);
+        let reasonY = y + 59;
+        if (track.understanding) { ctx.fillStyle = "rgba(246,241,234,.72)"; ctx.font = "21px serif"; for (const line of reason) { ctx.fillText(line, 120, reasonY); reasonY += lineHeight; } }
+        y += 62 + Math.max(0, reason.length - 1) * lineHeight;
+    }
+    ctx.fillStyle = "rgba(246,241,234,.35)"; ctx.font = "17px sans-serif"; ctx.fillText("由小手机陪听模式生成", 64, height - 45);
+    return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("png failed")), "image/png"));
 }
 
 function ReadingCompanionCardBubble({ msg }: { msg: ChatMessage }) {
@@ -234,7 +346,7 @@ function ReadingCompanionCardBubble({ msg }: { msg: ChatMessage }) {
             : null;
 
     return (
-        <div style={{ width: "min(82vw, 360px)", overflow: "hidden", borderRadius: 18, color: "#f6f1ea", background: "linear-gradient(155deg, #1f2a1f 0%, #161e16 55%, #0f140f 100%)", boxShadow: "0 16px 34px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08)" }}>
+        <div className="reading-companion-card-solid" style={{ width: "min(82vw, 360px)", overflow: "hidden", borderRadius: 18, color: "#f6f1ea", background: "linear-gradient(155deg, #1f2a1f 0%, #161e16 55%, #0f140f 100%)", border: "1px solid rgba(185,215,175,.18)", boxShadow: "0 16px 34px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.08)" }}>
             <div style={{ padding: 16, display: "flex", gap: 14, alignItems: "center" }}>
                 <div style={{ width: 64, height: 88, flex: "0 0 64px", overflow: "hidden", borderRadius: 10, background: "radial-gradient(circle at 35% 28%, #4a5a4a, #1a221a 68%)", boxShadow: "0 8px 20px rgba(0,0,0,.28)" }}>
                     {book?.coverUrl ? (

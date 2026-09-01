@@ -1411,6 +1411,13 @@
   overflow: visible !important;
 }
 
+.reading-companion-card-solid {
+  background-color: #161e16 !important;
+  background-image: linear-gradient(155deg, #1f2a1f 0%, #161e16 55%, #0f140f 100%) !important;
+  opacity: 1 !important;
+  isolation: isolate;
+}
+
 .chat-bubble-media.chat-bubble-music-share {
   border-radius: 16px;
   box-shadow: var(--chat-bubble-shadow, 0 2px 6px rgba(0,0,0,0.02)) !important;
