@@ -111,6 +111,8 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             return <QuoteBubble msg={msg} displayContent={displayContent} defaultTranslationExpanded={defaultTranslationExpanded} />;
         case "music_share":
             return <MusicShareBubble msg={msg} onPlay={onMusicPlay} />;
+        case "music_companion_card":
+            return <MusicCompanionCardBubble msg={msg} onPlay={onMusicPlay} />;
         case "media_file":
             return <MediaFileBubble msg={msg} onUpdate={onUpdate} characterId={characterId} />;
         case "xiaohongshu_note_share":
@@ -146,6 +148,9 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
         if (prev.msg.mediaData?.appCardTitle !== next.msg.mediaData?.appCardTitle) return false;
         if (prev.msg.mediaData?.appCardBody !== next.msg.mediaData?.appCardBody) return false;
         if (prev.msg.mediaData?.appCardLayout !== next.msg.mediaData?.appCardLayout) return false;
+        if (prev.msg.mediaData?.musicCompanionTitle !== next.msg.mediaData?.musicCompanionTitle) return false;
+        if (prev.msg.mediaData?.musicCompanionThought !== next.msg.mediaData?.musicCompanionThought) return false;
+        if (prev.msg.mediaData?.musicCompanionTracks !== next.msg.mediaData?.musicCompanionTracks) return false;
         if (prev.msg.mediaData?.imageGenerationPrompt !== next.msg.mediaData?.imageGenerationPrompt) return false;
         if (prev.msg.mediaData?.imageGenerationStatus !== next.msg.mediaData?.imageGenerationStatus) return false;
         if (prev.msg.mediaData?.imageGenerationError !== next.msg.mediaData?.imageGenerationError) return false;
@@ -159,6 +164,55 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
     if (prev.defaultTranslationExpanded !== next.defaultTranslationExpanded) return false;
     return true;
 });
+
+function MusicCompanionCardBubble({ msg, onPlay }: { msg: ChatMessage; onPlay?: (title: string, artist?: string) => void }) {
+    const [expanded, setExpanded] = useState(false);
+    const tracks = msg.mediaData?.musicCompanionTracks || [];
+    const title = msg.mediaData?.musicCompanionTitle?.trim() || "这次想和你听";
+    const thought = msg.mediaData?.musicCompanionThought?.trim();
+    const covers = tracks.filter(track => track.coverUrl).slice(0, 4);
+
+    return (
+        <div style={{ width: "min(78vw, 350px)", overflow: "hidden", borderRadius: 20, color: "#f6f1ea", background: "linear-gradient(148deg, #242323 0%, #171719 55%, #111114 100%)", boxShadow: "0 16px 34px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08)" }}>
+            <button type="button" onClick={(event) => { event.stopPropagation(); setExpanded(value => !value); }} style={{ width: "100%", border: 0, padding: 16, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer" }}>
+                <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                    <div style={{ width: 72, height: 72, flex: "0 0 72px", overflow: "hidden", borderRadius: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", background: "radial-gradient(circle at 35% 28%, #72685f, #252326 68%)", boxShadow: "0 8px 20px rgba(0,0,0,.28)" }}>
+                        {covers.length > 0 ? covers.map((track, index) => (
+                            <img key={track.trackId + "_" + index} src={track.coverUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        )) : <div style={{ gridColumn: "1 / 3", gridRow: "1 / 3", display: "grid", placeItems: "center", fontFamily: "serif", fontSize: 30 }}>♫</div>}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 10, letterSpacing: ".18em", color: "rgba(246,241,234,.54)" }}>PRIVATE LISTENING</div>
+                        <div style={{ marginTop: 7, fontSize: 17, fontWeight: 650, letterSpacing: ".01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+                        <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "rgba(246,241,234,.58)" }}>
+                            <span>{tracks.length} 首</span><span style={{ width: 3, height: 3, borderRadius: 9, background: "rgba(246,241,234,.38)" }} /><span>{expanded ? "收起曲序" : "展开曲序"}</span>
+                        </div>
+                    </div>
+                </div>
+                {thought && <div style={{ marginTop: 14, padding: "12px 13px", borderLeft: "2px solid rgba(225,184,153,.72)", borderRadius: "0 12px 12px 0", background: "rgba(255,255,255,.045)", fontFamily: "serif", fontSize: 13, lineHeight: 1.65, color: "rgba(246,241,234,.84)" }}>{thought}</div>}
+            </button>
+
+            <div style={{ height: 1, margin: "0 16px", background: "linear-gradient(90deg, rgba(255,255,255,.03), rgba(255,255,255,.15), rgba(255,255,255,.03))" }} />
+            <div style={{ maxHeight: expanded ? 360 : 154, overflowY: expanded ? "auto" : "hidden", padding: "7px 10px 10px" }}>
+                {tracks.map((track, index) => (
+                    <button key={track.trackId} type="button" onClick={(event) => { event.stopPropagation(); onPlay?.(track.title, track.artist); }} style={{ width: "100%", display: "grid", gridTemplateColumns: "25px minmax(0,1fr)", gap: 9, border: 0, padding: "9px 7px", borderRadius: 12, background: "transparent", color: "inherit", textAlign: "left", cursor: onPlay ? "pointer" : "default" }}>
+                        <span style={{ paddingTop: 2, fontSize: 11, textAlign: "right", color: index === 0 ? "#e1b899" : "rgba(246,241,234,.36)", fontVariantNumeric: "tabular-nums" }}>{String(index + 1).padStart(2, "0")}</span>
+                        <span style={{ minWidth: 0 }}>
+                            <span style={{ display: "block", fontSize: 13, fontWeight: 560, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.title}</span>
+                            <span style={{ display: "block", marginTop: 2, fontSize: 11, color: "rgba(246,241,234,.48)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.artist}</span>
+                            {expanded && track.understanding && <span style={{ display: "block", marginTop: 6, fontFamily: "serif", fontSize: 12, lineHeight: 1.55, color: "rgba(246,241,234,.68)" }}>{track.understanding}</span>}
+                        </span>
+                    </button>
+                ))}
+            </div>
+            {!expanded && tracks.length > 3 && (
+                <button type="button" onClick={(event) => { event.stopPropagation(); setExpanded(true); }} style={{ width: "100%", border: 0, padding: "9px 0 13px", background: "transparent", color: "#e1b899", fontSize: 12, letterSpacing: ".04em", cursor: "pointer" }}>
+                    查看完整歌单与他的想法
+                </button>
+            )}
+        </div>
+    );
+}
 
 // ── Text Bubble (default) ─────────────────────────────
 

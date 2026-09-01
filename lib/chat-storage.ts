@@ -97,7 +97,7 @@ export type ChatMessage = {
         | "voice_call" | "video_call"
         | "accept_red_packet" | "decline_red_packet" | "accept_transfer" | "decline_transfer"
         | "payment_request" | "accept_payment_request" | "decline_payment_request"
-        | "music" | "music_share" | "music_notify" | "music_not_found"
+        | "music" | "music_share" | "music_notify" | "music_not_found" | "music_companion_card"
         | "xiaohongshu_note_share"
         | "gift"
         | "contact_card"
@@ -178,6 +178,15 @@ export type ChatMessage = {
         adminMuteMinutes?: number;// 禁言时长（分钟）
         musicTitle?: string;      // 音乐标题
         musicArtist?: string;     // 音乐歌手
+        musicCompanionTitle?: string;
+        musicCompanionThought?: string;
+        musicCompanionTracks?: Array<{
+            trackId: string;
+            title: string;
+            artist: string;
+            coverUrl?: string;
+            understanding?: string;
+        }>;
         xiaohongshuAuthor?: string;       // 小红书分享作者
         xiaohongshuTitle?: string;        // 小红书分享标题
         xiaohongshuBody?: string;         // 小红书分享正文
@@ -282,6 +291,7 @@ const MEDIA_PREVIEW_MAP: Record<string, string> = {
     payment_request: "[代付请求]",
     music: "[音乐]",
     music_share: "[音乐分享]",
+    music_companion_card: "[陪听歌单]",
     xiaohongshu_note_share: "[小红书分享]",
     app_card: "[应用卡片]",
     tool_notice: "[执行动作]",
