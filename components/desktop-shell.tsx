@@ -16,6 +16,7 @@ import { PhonePlaceholderApp } from "@/components/phone-placeholder-app";
 import MusicApp from "@/components/music/music-app";
 import MusicPlayer from "@/components/music/music-player";
 import MusicFloat from "@/components/music/music-float";
+import { GlobalThreeLineLyrics } from "@/components/music/global-three-line-lyrics";
 import MiniAppWindow from "@/components/music/mini-app-window";
 import { PhoneCalendarApp } from "@/components/calendar-app";
 import { PhoneQaApp } from "@/components/phone-qa-app";
@@ -1039,6 +1040,7 @@ const MusicShellOverlays = memo(function MusicShellOverlays({
   return (
     <>
       {musicPlayer?.showFullPlayer && musicPlayer.currentTrack && <MusicPlayer />}
+      <GlobalThreeLineLyrics />
       <MusicFloat hidden={activeApp === "music" || musicPlayer?.showFullPlayer} />
     </>
   );
