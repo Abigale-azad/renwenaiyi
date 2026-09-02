@@ -89,6 +89,7 @@ export const DATA_MODULES: DataModuleDefinition[] = [
         label: "角色卡与角色素材",
         keys: [
           "ai_phone_characters_v1",
+          "ai_phone_character_growth_v1",
           "ai_phone_bg_items_v1",
         ],
       },

@@ -1,6 +1,13 @@
 // lib/llm-prompt-assembler.ts
 
 import { Character } from "./character-types";
+import { approvedGrowthText, isLegacyGrowthBook } from "./character-growth-storage";
+
+function withApprovedGrowth(character: Character): Character {
+    const growth = approvedGrowthText(character.id);
+    const boundary = "仅将自己参与的互动视为亲身经历。其他角色的私聊、重置和软件管理操作不属于你的经历；未知时不要声称知道。";
+    return { ...character, persona: `${character.persona || ""}\n\n【信息边界】\n${boundary}${growth ? `\n\n【用户已确认的专属成长｜不得覆盖核心人物卡】\n${growth}` : ""}` };
+}
 import { ChatMessage } from "./chat-storage";
 import type { StateValue } from "./chat-storage";
 import { PresetConfig, Prompt, PromptOrderEntry, WorldBookConfig, RegexConfig, WorldBookEntry } from "./settings-types";
@@ -603,6 +610,7 @@ function isWBAtDepthPosition(entry: WorldBookEntry): boolean {
  * 预设里没有的东西一律不注入——不存在人设/世界书/记忆的硬编码兜底。
  */
 export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
+    input = { ...input, character: withApprovedGrowth(input.character), worldBooks: input.worldBooks.filter(book => !isLegacyGrowthBook(book)) };
     const { character, history, preset, worldBooks, regexes, userIdentity, userName = "User",
         longTermMemories, coreMemories, scheduleSummary } = input;
     const appId = input.appId ?? "chat";
@@ -1718,6 +1726,8 @@ function pushGroupChronologicalShortTermBlocks(params: {
  * and the AI is asked to respond as all characters simultaneously.
  */
 export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessage[] {
+    // Private growth is not disclosed into a shared group prompt.
+    input = { ...input, members: input.members.map(member => ({ ...member, worldBooks: member.worldBooks.filter(book => !isLegacyGrowthBook(book)) })) };
     const {
         members, history, preset, regexes, userIdentity,
         userName = "User", groupName, memberNames,

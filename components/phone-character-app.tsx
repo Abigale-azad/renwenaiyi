@@ -54,6 +54,7 @@ import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { normalizeTimeZone } from "@/lib/character-time";
 import { CastingStudio } from "@/components/character/casting-studio";
+import { CharacterGrowthPanel } from "@/components/character/character-growth-panel";
 
 type ViewType = "list" | "detail";
 
@@ -1801,6 +1802,7 @@ function CharArchiveView({
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState<"back" | "cancel" | null>(null);
   const [showSaveVersionConfirm, setShowSaveVersionConfirm] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
+  const [showGrowth, setShowGrowth] = useState(false);
   const [versions, setVersions] = useState<CharacterVersion[]>([]);
   const [restoreTarget, setRestoreTarget] = useState<CharacterVersion | null>(null);
   const [deleteVersionTarget, setDeleteVersionTarget] = useState<CharacterVersion | null>(null);
@@ -2300,6 +2302,9 @@ function CharArchiveView({
     );
   }
 
+  if (showGrowth && isExisting && !isEditing) {
+    return <CharacterGrowthPanel key={char.id} character={char} onBack={() => setShowGrowth(false)} />;
+  }
   return (
     <PageShell
       title=""
@@ -2323,6 +2328,7 @@ function CharArchiveView({
         </div>
       ) : undefined}
     >
+      {!isEditing && isExisting && <button type="button" className="m-4 rounded-xl border px-4 py-3" onClick={() => setShowGrowth(true)}>成长与信息边界</button>}
       {archiveFrame}
 
       {showSaveVersionConfirm && (

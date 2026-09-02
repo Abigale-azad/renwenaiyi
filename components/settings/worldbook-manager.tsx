@@ -49,7 +49,10 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
 
     const persist = useCallback((newBooks: WorldBookConfig[]) => {
         setBooks(newBooks);
-        saveWorldBooks(newBooks);
+        // Hidden legacy growth books are retained for recovery; normal book edits
+        // must not accidentally delete them.
+        const archivedGrowth = loadWorldBooks().filter(book => getPersonalityGrowthCharacterId(book) !== null);
+        saveWorldBooks([...newBooks, ...archivedGrowth.filter(book => !newBooks.some(item => item.id === book.id))]);
     }, []);
 
     const wbContainerRef = useRef<HTMLDivElement>(null);
@@ -155,7 +158,10 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
         pendingSaveRef.current = next;
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => {
-            if (pendingSaveRef.current) saveWorldBooks(pendingSaveRef.current);
+            if (pendingSaveRef.current) {
+                const hidden = loadWorldBooks().filter(book => getPersonalityGrowthCharacterId(book) !== null);
+                saveWorldBooks([...pendingSaveRef.current, ...hidden.filter(book => !pendingSaveRef.current!.some(item => item.id === book.id))]);
+            }
             pendingSaveRef.current = null;
             saveTimerRef.current = null;
         }, 300);

@@ -1,3 +1,5 @@
+import { mayReadOtherChats } from "./character-growth-storage";
+import { isPrivateChatLookup } from "./character-privacy-policy";
 import type {
     CompositeToolConfig,
     CompositeToolPackageConfig,
@@ -680,6 +682,9 @@ async function executeCompositeTool(
 ): Promise<ToolResult> {
     throwIfAborted(context?.signal);
     const toolDisplayName = expandToolNameMacros(tool.name, buildToolNameMacroContext(context));
+    if (isPrivateChatLookup(tool.id) && !mayReadOtherChats(context?.characterId)) {
+        return { name: toolDisplayName, success: false, error: "信息边界：该角色未获准查看其他微信联系人、会话预览或聊天记录。请勿推测其他私聊内容。", userNotice: "已拦截跨角色聊天读取" };
+    }
     if (depth >= MAX_COMPOSITE_DEPTH) {
         return { name: toolDisplayName, success: false, error: "组合工具嵌套层级过深" };
     }

@@ -1,174 +1,62 @@
 import { simpleLLMCall } from "./api-helpers";
-import {
-    createWorldBook,
-    loadWorldBooks,
-    resolveAuxiliaryApiConfig,
-    saveWorldBooks,
-} from "./settings-storage";
-import type { WorldBookConfig, WorldBookEntry } from "./settings-types";
+import { loadWorldBooks, resolveAuxiliaryApiConfig } from "./settings-storage";
+import type { WorldBookConfig } from "./settings-types";
 import type { Character } from "./character-types";
 import { loadNativeTimeline, formatTimelineForSummarization } from "./short-term-assembler";
-
-export const PERSONALITY_GROWTH_MARKER = "auto-personality-growth:";
-const CURRENT_ENTRY_COMMENT = "当前人格成长（自动生成）";
-const MAX_HISTORY_ENTRIES = 12;
-
-function markerFor(characterId: string): string {
-    return `${PERSONALITY_GROWTH_MARKER}${characterId}`;
-}
-
-function makeEntry(input: Partial<WorldBookEntry> & Pick<WorldBookEntry, "uid" | "content" | "comment">): WorldBookEntry {
-    return {
-        uid: input.uid,
-        key: input.key ?? "",
-        content: input.content,
-        comment: input.comment,
-        use_regex: false,
-        disable: input.disable ?? false,
-        constant: input.constant ?? true,
-        position: input.position ?? "after_char",
-        depth: 0,
-        probability: 100,
-        useProbability: false,
-        role: 0,
-        insertion_order: input.insertion_order ?? 90,
-    };
-}
-
-function findGrowthBook(books: WorldBookConfig[], characterId: string): WorldBookConfig | undefined {
-    const marker = markerFor(characterId);
-    return books.find(book => book.description === marker);
-}
-
+import { addGrowthCandidate, approvedGrowthText, GROWTH_MARKER, isLegacyGrowthBook, loadCharacterGrowth } from "./character-growth-storage";
+export const PERSONALITY_GROWTH_MARKER = GROWTH_MARKER;
 export function getPersonalityGrowthCharacterId(book: WorldBookConfig): string | null {
-    const description = book.description || "";
-    return description.startsWith(PERSONALITY_GROWTH_MARKER)
-        ? description.slice(PERSONALITY_GROWTH_MARKER.length)
-        : null;
+  return isLegacyGrowthBook(book) ? book.description!.slice(GROWTH_MARKER.length) : null;
 }
-
+export function migrateCharacterGrowth(characterId: string) {
+  // Copy only; preserve old books as recovery sources. Stable IDs make retries safe.
+  for (const book of loadWorldBooks()) {
+    if (getPersonalityGrowthCharacterId(book) !== characterId) continue;
+    for (const entry of book.entries || []) {
+      if (!entry.content.trim()) continue;
+      addGrowthCandidate(characterId, { id: `legacy:${book.id}:${entry.uid}`, content: entry.content,
+        createdAt: book.updatedAt || Date.now(), source: `旧成长簿：${book.name} / ${entry.comment}`,
+        evidence: "旧版本未记录消息级证据。请核对后再采用，不代表已验证事实。" });
+    }
+  }
+}
 export function ensurePersonalityGrowthWorldBooks(characters: Character[]): WorldBookConfig[] {
-    const books = loadWorldBooks();
-    const existingCharacterIds = new Set(
-        books.map(getPersonalityGrowthCharacterId).filter((id): id is string => Boolean(id)),
-    );
-    const additions = characters
-        .filter(character => !existingCharacterIds.has(character.id))
-        .map(character => {
-            const book = createWorldBook(`${character.name} · 人格成长簿`);
-            return {
-                ...book,
-                description: markerFor(character.id),
-                entries: [],
-            };
-        });
-    if (additions.length === 0) return books;
-    const next = [...books, ...additions];
-    saveWorldBooks(next);
-    return next;
+  characters.forEach(character => migrateCharacterGrowth(character.id));
+  return loadWorldBooks().filter(book => !isLegacyGrowthBook(book));
 }
-
-export function getAutomaticPersonalityWorldBookIds(characterId: string): string[] {
-    return loadWorldBooks()
-        .filter(book => book.description === markerFor(characterId))
-        .map(book => book.id);
-}
-
+export function getAutomaticPersonalityWorldBookIds(_characterId: string): string[] { return []; }
+const DEFAULT_PROMPT = `你是角色人格连续性编辑器，仅根据该角色亲身参与的互动生成候选成长。
+使用四个标题：【逐渐稳定的人格特点】【对用户的新认识】【近期形成的相处方式】【需要避免的误判】。
+每条说明支持它的具体事件；证据不足的推断明确标为“待观察”。区分用户原话、角色理解与推断。
+不得将其他角色的经历当成当前角色的经历；不得将重置、删除等软件管理操作推断为共同经历或永久恐惧。
+不得改写核心人物卡、身份、价值观和明确边界。不把一次性情绪固定成人格。不替用户做心理诊断。
+合并仍然成立的已采用成长，结果300至700字。这是待用户确认的草稿，不是世界书。`;
+const running = new Set<string>();
 export async function updatePersonalityGrowthWorldBook(input: {
-    characterId: string;
-    characterName: string;
-    recentEvents: string;
-    factualSummary: string;
+  characterId: string; characterName: string; recentEvents: string; factualSummary: string;
 }): Promise<{ success: boolean; error?: string; bookId?: string }> {
-    const apiConfig = resolveAuxiliaryApiConfig("memorySummaryApiConfigId");
-    if (!apiConfig) return { success: false, error: "未配置记忆总结 API" };
-
-    const books = loadWorldBooks();
-    const existingBook = findGrowthBook(books, input.characterId);
-    const previous = existingBook?.entries.find(entry => entry.comment === CURRENT_ENTRY_COMMENT && !entry.disable)?.content.trim() || "（尚未形成）";
-    const prompt = `你是角色人格连续性编辑器。请根据近期真实互动，更新“${input.characterName}”的可成长人格层。
-
-已有成长人格：
-${previous}
-
-近期事件：
-${input.recentEvents}
-
-事实记忆摘要：
-${input.factualSummary}
-
-请输出一份可直接作为世界书注入的中文设定，严格使用以下四个标题：
-【逐渐稳定的人格特点】
-【对用户的新认识】
-【近期形成的相处方式】
-【需要避免的误判】
-
-规则：
-- 只写有近期互动证据、可能影响后续回应的内容；不确定就不写。
-- 区分稳定倾向与一次性情绪，不把单次玩笑、争执或疲惫永久化。
-- 这是核心角色卡之外的成长层，不得改写身份、价值观、硬性禁忌和用户明确规则。
-- 保持角色的主体性，可以形成自己的判断与表达习惯；不要把人格写成一味讨好用户。
-- 严肃议题优先讨论议题，不要强行转入恋爱表达。
-- 合并已有成长人格中仍然成立的内容，删除已经被新证据明确推翻的内容。
-- 总长度控制在300至700字，只输出设定正文，不要解释过程。`;
-
-    const result = await simpleLLMCall(apiConfig, [{ role: "user", content: prompt }], { temperature: 0.25 });
-    const content = result.content?.trim();
-    if (!content) return { success: false, error: result.error || "人格成长结果为空" };
-    if (result.wasTruncated) return { success: false, error: "人格成长结果被截断，已取消写入" };
-
-    const now = Date.now();
-    const book = existingBook || createWorldBook(`${input.characterName} · 人格成长簿`);
-    const oldCurrent = book.entries.find(entry => entry.comment === CURRENT_ENTRY_COMMENT && !entry.disable);
-    const history = book.entries
-        .filter(entry => entry !== oldCurrent)
-        .map(entry => ({ ...entry, disable: true, constant: false }))
-        .slice(0, MAX_HISTORY_ENTRIES - 1);
-    if (oldCurrent?.content.trim()) {
-        history.unshift(makeEntry({
-            uid: `growth-history-${now}`,
-            content: oldCurrent.content,
-            comment: `历史版本 ${new Date(now).toLocaleString("zh-CN", { hour12: false })}`,
-            disable: true,
-            constant: false,
-            insertion_order: 89,
-        }));
-    }
-    const current = makeEntry({
-        uid: oldCurrent?.uid || `growth-current-${input.characterId}`,
-        content,
-        comment: CURRENT_ENTRY_COMMENT,
-        disable: false,
-        constant: true,
-        insertion_order: 90,
-    });
-    const updatedBook: WorldBookConfig = {
-        ...book,
-        name: `${input.characterName} · 人格成长簿`,
-        description: markerFor(input.characterId),
-        updatedAt: now,
-        entries: [current, ...history.slice(0, MAX_HISTORY_ENTRIES - 1)],
-    };
-    saveWorldBooks(existingBook
-        ? books.map(item => item.id === updatedBook.id ? updatedBook : item)
-        : [...books, updatedBook]);
-    if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("settings-worldbooks-updated"));
-    }
-    return { success: true, bookId: updatedBook.id };
+  if (running.has(input.characterId)) return { success: false, error: "该角色正在整理成长" };
+  const api = resolveAuxiliaryApiConfig("memorySummaryApiConfigId");
+  if (!api) return { success: false, error: "未配置记忆总结 API" };
+  running.add(input.characterId);
+  try {
+    migrateCharacterGrowth(input.characterId);
+    if (loadCharacterGrowth(input.characterId).revisions.filter(r => r.status === "pending" && !r.id.startsWith("legacy:")).length >= 3)
+      return { success: false, error: "已有3份候选待确认，请先审阅，避免重复调用" };
+    const result = await simpleLLMCall(api, [{ role: "system", content: DEFAULT_PROMPT }, { role: "user", content:
+      `角色：${input.characterName}\n已采用成长：${approvedGrowthText(input.characterId) || "无"}\n近期互动：\n${input.recentEvents}\n事实摘要：\n${input.factualSummary}` }], { temperature: 0.25 });
+    if (!result.content?.trim() || result.wasTruncated) return { success: false, error: result.error || "结果为空或被截断，未写入" };
+    addGrowthCandidate(input.characterId, { id: crypto.randomUUID(), content: result.content.trim(), createdAt: Date.now(),
+      source: "该角色互动总结", evidence: input.factualSummary + "\n\n" + input.recentEvents });
+    return { success: true };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+  finally { running.delete(input.characterId); }
 }
-
-export async function runManualPersonalityGrowth(input: {
-    characterId: string;
-    characterName: string;
-}): Promise<{ success: boolean; error?: string; bookId?: string }> {
-    const entries = loadNativeTimeline(input.characterId);
-    if (entries.length < 4) return { success: false, error: "至少需要4条聊天或互动记录" };
-    const formatted = formatTimelineForSummarization(entries);
-    if (!formatted?.eventsText) return { success: false, error: "没有可整理的互动内容" };
-    return updatePersonalityGrowthWorldBook({
-        ...input,
-        recentEvents: formatted.eventsText,
-        factualSummary: `手动整理范围：${formatted.earliest} 至 ${formatted.latest}，共${entries.length}条互动。`,
-    });
+export async function runManualPersonalityGrowth(input: { characterId: string; characterName: string }) {
+  const entries = loadNativeTimeline(input.characterId);
+  if (entries.length < 4) return { success: false, error: "至少需要4条该角色的互动记录" };
+  const formatted = formatTimelineForSummarization(entries);
+  if (!formatted?.eventsText) return { success: false, error: "没有可整理的互动" };
+  return updatePersonalityGrowthWorldBook({ ...input, recentEvents: formatted.eventsText,
+    factualSummary: `${formatted.earliest} 至 ${formatted.latest}，共${entries.length}条互动` });
 }
