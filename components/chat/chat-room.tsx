@@ -51,13 +51,14 @@ import { AlertCircle, Blocks, BookOpen, Bookmark, Check, Copy, Download, Trash2,
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
-import { getMusicControlBridge } from "@/lib/music-control-bridge";
 import { loadMusicCompanion, startMusicCompanion, MUSIC_COMPANION_PROGRESS_EVENT, MUSIC_COMPANION_REQUEST_EVENT, type MusicCompanionRequestDetail } from "@/lib/music-companion-storage";
 import { detectReadingCompanionIntent, handleReadingCompanionIntent } from "@/lib/reading-companion-chat-handler";
 import { loadReadingCompanion } from "@/lib/reading-companion-storage";
+import { getMusicControlBridge } from "@/lib/music-control-bridge";
 import { findPlayableMatch, getNeteaseLyrics, getNeteaseSongDetail } from "@/lib/music-service";
 import { approveMemoryWriteRequest } from "@/lib/tool-executor";
 import type { MemoryWriteRequest, ToolResult } from "@/lib/tool-executor";
+import { createFlowusTodo, queryFlowusTodo, saveChatFavorite, searchFlowus } from "@/lib/flowus-client";
 import { formatChatUiTime } from "@/lib/chat-time";
 import { parseActionTags } from "@/lib/action-parser";
 import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
@@ -765,6 +766,10 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     const plusMenuItems = [
         ...(!isGroup ? [{ icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 13v-1a8 8 0 0 1 16 0v1"/><path d="M4 13h2a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4v-7Zm16 0h-2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h2v-7Z"/></svg>, label: "陪听", onClick: onStartMusicCompanion }] : []),
         ...(!isGroup ? [{ icon: <BookOpen size={22} strokeWidth={1.5} color="var(--c-text)" />, label: "共读", onClick: onOpenReadingCompanion }] : []),
+        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="7" y1="8" x2="17" y2="8" /><line x1="7" y1="12" x2="14" y2="12" /><line x1="7" y1="16" x2="11" y2="16" /></svg>, label: "FlowUs待办", onClick: () => { onClosePanels(); const title = window.prompt("新建待办标题"); if (title) void createFlowusTodo(title, { note: `来自角色 ${characterName}` }).then(r => window.dispatchEvent(new CustomEvent(CHAT_PLUGIN_TOAST_EVENT, { detail: { text: r.ok ? "已创建待办" : (r.error?.message || "创建失败") } }))); } },
+        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>, label: "FlowUs查资料", onClick: () => { onClosePanels(); const query = window.prompt("想查什么？"); if (query) void searchFlowus(query).then(r => window.dispatchEvent(new CustomEvent(CHAT_PLUGIN_TOAST_EVENT, { detail: { text: r.ok ? `找到 ${r.data?.results.length ?? 0} 条` : (r.error?.message || "查询失败") } }))); } },
+        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>, label: "FlowUs收藏", onClick: () => { onClosePanels(); const content = window.prompt("记点什么？"); if (content) void saveChatFavorite({ content, tags: ["聊天想法"] }).then(r => window.dispatchEvent(new CustomEvent(CHAT_PLUGIN_TOAST_EVENT, { detail: { text: r.ok ? "已保存到收件箱" : (r.error?.message || "保存失败") } }))); } },
+        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="7" y1="8" x2="17" y2="8" /><line x1="7" y1="12" x2="14" y2="12" /><line x1="7" y1="16" x2="11" y2="16" /></svg>, label: "打开FlowUs", onClick: () => { onClosePanels(); window.location.href = "/flowus"; } },
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>, label: "照片墙", onClick: () => onOpenRichModal("photo") },
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="7" y1="8" x2="17" y2="8" /><line x1="7" y1="12" x2="14" y2="12" /><line x1="7" y1="16" x2="11" y2="16" /></svg>, label: "文字图片", onClick: () => onOpenRichModal("text_photo") },
         { icon: <AlertCircle size={22} strokeWidth={1.5} color="var(--c-text)" />, label: "系统指令", onClick: () => onOpenRichModal("system_instruction") },
@@ -1156,16 +1161,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     }, []);
 
     useEffect(() => {
-        let clearTimer: ReturnType<typeof setTimeout> | undefined;
+        let closeTimer: ReturnType<typeof setTimeout> | null = null;
         const handler = (event: Event) => {
             const detail = (event as CustomEvent<{ sessionId?: string; percent?: number; text?: string; status?: string }>).detail;
-            if (!detail || detail.sessionId !== session.id || !detail.text) return;
-            if (clearTimer) clearTimeout(clearTimer);
-            setMusicCompanionProgress({ percent: Math.max(0, Math.min(100, Math.round(detail.percent || 0))), text: detail.text, status: detail.status || "running" });
-            if (detail.status === "ready") clearTimer = setTimeout(() => setMusicCompanionProgress(null), 3500);
+            if (!detail || detail.sessionId !== session.id) return;
+            setMusicCompanionProgress({ percent: detail.percent ?? 0, text: detail.text || "正在准备陪听", status: detail.status || "running" });
+            if (detail.status === "ready") closeTimer = setTimeout(() => setMusicCompanionProgress(null), 3500);
         };
         window.addEventListener(MUSIC_COMPANION_PROGRESS_EVENT, handler);
-        return () => { window.removeEventListener(MUSIC_COMPANION_PROGRESS_EVENT, handler); if (clearTimer) clearTimeout(clearTimer); };
+        return () => { window.removeEventListener(MUSIC_COMPANION_PROGRESS_EVENT, handler); if (closeTimer) clearTimeout(closeTimer); };
     }, [session.id]);
 
     useEffect(() => {
@@ -3854,14 +3858,32 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 const bridge = getMusicControlBridge();
                 const previous = loadMusicCompanion();
                 const queueIds = new Set(bridge?.getState().queue.map(track => String(track.id)) || []);
-                const canResume = !wantsFreshCompanion && previous?.active === true && previous.sessionId === session.id && previous.characterId === session.contactId && previous.status === "ready" && Date.now() - previous.startedAt < 24 * 60 * 60 * 1000 && !!previous.selectedTrackIds?.length && previous.selectedTrackIds.every(id => queueIds.has(String(id)));
-                if (canResume && bridge) { bridge.resume(); showChatToast("继续上一轮陪听"); }
-                else if (!(previous?.status === "preparing" && previous.sessionId === session.id && previous.characterId === session.contactId)) { startMusicCompanion(session.id, session.contactId); setMusicCompanionProgress({ percent: 1, text: "正在启动陪听模式", status: "running" }); const detail: MusicCompanionRequestDetail = { sessionId: session.id, characterId: session.contactId, requestedAt: Date.now(), mode: "curated", count: 18 }; window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_REQUEST_EVENT, { detail })); }
+                const canResume = !wantsFreshCompanion
+                    && previous?.active === true
+                    && previous.sessionId === session.id
+                    && previous.characterId === session.contactId
+                    && previous.status === "ready"
+                    && Date.now() - previous.startedAt < 24 * 60 * 60 * 1000
+                    && !!previous.selectedTrackIds?.length
+                    && previous.selectedTrackIds.every(id => queueIds.has(String(id)));
+                if (canResume && bridge) {
+                    bridge.resume();
+                    showChatToast("继续上一轮陪听");
+                } else if (!(previous?.status === "preparing" && previous.sessionId === session.id && previous.characterId === session.contactId)) {
+                    startMusicCompanion(session.id, session.contactId);
+                    setMusicCompanionProgress({ percent: 1, text: "正在启动陪听模式", status: "running" });
+                    const detail: MusicCompanionRequestDetail = { sessionId: session.id, characterId: session.contactId, requestedAt: Date.now(), mode: "curated", count: 18 };
+                    window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_REQUEST_EVENT, { detail }));
+                }
             }
+            // 微信读书共读：开始/讨论/结束。与陪听互斥，且 discuss/end 仅在有进行中共读时旁路，
+            // 否则让"聊聊"这类词走正常对话。
             const readingIntent = detectReadingCompanionIntent(currentText);
             const hasActiveReading = !!loadReadingCompanion()?.active;
             const handlesReading = !session.isGroup && readingIntent !== "none" && (readingIntent === "start" || hasActiveReading);
-            if (handlesReading) void handleReadingCompanionIntent(readingIntent, currentText, session);
+            if (handlesReading) {
+                void handleReadingCompanionIntent(readingIntent, currentText, session);
+            }
             if (diceOnly) {
                 const diceAside = pushChatMessage({
                     sessionId: session.id,
@@ -5225,6 +5247,40 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         copyStoredMessages([...selectedMessageIds]);
     }, [copyStoredMessages, selectedMessageIds]);
 
+    const handleMultiSaveToFlowus = useCallback(async () => {
+        if (selectedMessageIds.size === 0) {
+            showChatToast("请先选择消息");
+            return;
+        }
+        const selected = new Set([...selectedMessageIds]);
+        const storedMessages = loadChatMessages(session.id).filter(message => selected.has(message.id));
+        const blocks = storedMessages.map(message => {
+            const text = getStoredMessageText(message);
+            if (!text) return "";
+            const speaker = message.role === "user"
+                ? (userIdentity?.name || "我")
+                : (message.senderName || character?.name || "对方");
+            return `${speaker}：${text}`;
+        }).filter(Boolean);
+        if (blocks.length === 0) {
+            showChatToast("所选内容没有可保存的文字");
+            return;
+        }
+        const title = window.prompt("给这条收藏取个标题（可选）", `聊天摘录 ${new Date().toLocaleString("zh-CN")}`) || `聊天摘录 ${new Date().toLocaleString("zh-CN")}`;
+        const result = await saveChatFavorite({
+            title,
+            content: blocks.join("\n\n"),
+            tags: ["聊天收藏"],
+            characterId: session.contactId,
+        });
+        if (result.ok) {
+            showChatToast(`已保存 ${blocks.length} 条到 FlowUs`);
+            cancelMultiSelect();
+        } else {
+            showChatToast(result.error?.message || "保存失败");
+        }
+    }, [cancelMultiSelect, character?.name, getStoredMessageText, selectedMessageIds, session.contactId, session.id, userIdentity?.name]);
+
     const confirmMultiDelete = useCallback(() => {
         if (multiDeleteTargetIds.length === 0) {
             showChatToast("请选择要删除的消息");
@@ -6122,6 +6178,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         type="button"
                         className="chat-multi-select-action-btn"
                         disabled={selectedMessageIds.size === 0}
+                        onClick={() => void handleMultiSaveToFlowus()}
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /></svg>
+                        <span className="chat-multi-select-action-label">存到FlowUs</span>
+                    </button>
+                    <button
+                        type="button"
+                        className="chat-multi-select-action-btn"
+                        disabled={selectedMessageIds.size === 0}
                         onClick={handleMultiExport}
                     >
                         <Download size={18} strokeWidth={1.8} />
@@ -6637,6 +6702,19 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             )}
 
             {/* Chat toast notification (overlay, does not affect layout) */}
+            {musicCompanionProgress && (
+                <div className="chat-toast-overlay">
+                    <div className="wp-toast chat-toast-floating" style={{ minWidth: 260, display: "grid", gap: 9 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
+                            <span>{musicCompanionProgress.text}</span>
+                            <span>{musicCompanionProgress.percent}%</span>
+                        </div>
+                        <div style={{ height: 4, borderRadius: 999, background: "rgba(127,127,127,.22)", overflow: "hidden" }}>
+                            <div style={{ width: `${musicCompanionProgress.percent}%`, height: "100%", borderRadius: 999, background: musicCompanionProgress.status === "error" ? "#ef6b6b" : "var(--c-accent, #6c8cff)", transition: "width .25s ease" }} />
+                        </div>
+                    </div>
+                </div>
+            )}
             {chatToast && (
                 <div className="chat-toast-overlay">
                     <div className="wp-toast chat-toast-floating">
@@ -6646,20 +6724,6 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                 <span>{chatToast}</span>
                             </span>
                         ) : chatToast}
-                    </div>
-                </div>
-            )}
-
-            {musicCompanionProgress && (
-                <div className="chat-toast-overlay">
-                    <div className="wp-toast chat-toast-floating min-w-[260px] max-w-[82vw] !items-stretch !gap-2">
-                        <div className="flex items-center justify-between gap-4 text-sm">
-                            <span>{musicCompanionProgress.text}</span>
-                            <span className="shrink-0 tabular-nums opacity-70">{musicCompanionProgress.percent}%</span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-white/20">
-                            <div className={`h-full rounded-full transition-[width] duration-300 ${musicCompanionProgress.status === "error" ? "bg-red-400" : "bg-white"}`} style={{ width: `${musicCompanionProgress.percent}%` }} />
-                        </div>
                     </div>
                 </div>
             )}

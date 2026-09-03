@@ -25,7 +25,7 @@ import {
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
-import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, FLOWUS_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
 import { loadMemoryEntriesByType, saveMemoryEntry } from "./memory-storage";
 import type { MemoryEntry } from "./memory-types";
 import { loadCharacters } from "./character-storage";
@@ -75,6 +75,7 @@ import {
 import { makeTimedWakeId, saveTimedWakeSchedule } from "./timed-wake-storage";
 import { resolveUserIdentity } from "./settings-storage";
 import { attachAbortSignal, isAbortError, throwIfAborted } from "./abort-utils";
+import { createFlowusTodo, queryFlowusTodo, saveChatFavorite, searchFlowus, updateFlowusTodo } from "./flowus-client";
 
 // ── Types ─────────────────────────────────────
 
@@ -785,6 +786,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (call.name === "发送文件") return executeSendFileTool(call);
     if (call.name === "角色电脑") return executeAgentComputerTool(call, context);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
+    if (isFlowusToolName(call.name)) return executeFlowusTool(call, context);
 
     if (call.name !== "写入记忆") return null;
 
@@ -2353,34 +2355,47 @@ function executeMusicSwitchTool(args: Record<string, unknown>): ToolResult {
 }
 
 function executeMusicCompanionStartTool(context?: ToolExecutionContext, args: Record<string, unknown> = {}): ToolResult {
-    if (!context?.sessionId || !context.characterId || context.appId !== "chat" || context.sourceEngine !== "chat") return { name: "开始陪听", success: false, error: "陪听模式仅支持一对一聊天", userNotice: "陪听模式仅支持一对一聊天" };
+    if (!context?.sessionId || !context.characterId || context.appId !== "chat" || context.sourceEngine !== "chat") {
+        return {
+            name: "开始陪听",
+            success: false,
+            error: "陪听模式仅支持一对一聊天",
+            userNotice: "陪听模式仅支持一对一聊天",
+        };
+    }
     const bridge = getMusicControlBridge();
-    const previous = loadMusicCompanion();
-    if (args.force !== true && previous?.active && previous.sessionId === context.sessionId && previous.characterId === context.characterId && previous.status === "preparing" && Date.now() - previous.startedAt < 10 * 60 * 1000) return musicToolSuccess("开始陪听", "当前角色已经在读取曲库并选歌。", { userNotice: "正在选歌，请稍候…" });
+    const existing = loadMusicCompanion();
+    if (args.force !== true && existing?.active && existing.sessionId === context.sessionId && existing.characterId === context.characterId && existing.status === "preparing" && Date.now() - existing.startedAt < 10 * 60 * 1000) {
+        return musicToolSuccess("开始陪听", "当前角色已经在读取曲库并选歌。", { userNotice: "正在选歌，请稍候…" });
+    }
     const queueIds = new Set(bridge?.getState().queue.map(track => String(track.id)) || []);
-    const canResume = args.force !== true
-        && previous?.active === true
-        && previous.sessionId === context.sessionId
-        && previous.characterId === context.characterId
-        && previous.status === "ready"
-        && Date.now() - previous.startedAt < 24 * 60 * 60 * 1000
-        && !!previous.selectedTrackIds?.length
-        && previous.selectedTrackIds.every(id => queueIds.has(String(id)));
+    const canResume = args.force !== true && existing?.active && existing.characterId === context.characterId && existing.sessionId === context.sessionId && existing.status === "ready" && Date.now() - existing.startedAt < 24 * 60 * 60 * 1000 && (existing.selectedTrackIds?.length || 0) > 0 && existing.selectedTrackIds?.every(id => queueIds.has(String(id)));
     if (canResume && bridge) {
         bridge.resume();
-        return musicToolSuccess("开始陪听", "已继续上一轮由当前角色挑选的歌单。", { userNotice: "继续上一轮陪听" });
+        return musicToolSuccess("开始陪听", "已继续当前角色上次选好的陪听队列。", { userNotice: "继续上次的陪听" });
     }
     startMusicCompanion(context.sessionId, context.characterId);
     const detail: MusicCompanionRequestDetail = { sessionId: context.sessionId, characterId: context.characterId, requestedAt: Date.now(), mode: args.mode === "shuffle" ? "shuffle" : "curated", count: clampToolInteger(args.count, 15, 20, 18) };
     window.dispatchEvent(new CustomEvent(MUSIC_COMPANION_REQUEST_EVENT, { detail }));
-    return musicToolSuccess("开始陪听", "正在读取曲库与歌词，由当前角色亲自挑选并编排。", { userNotice: "正在从你的曲库里选歌…" });
+    return musicToolSuccess("开始陪听", "正在读取曲库与歌词，由当前角色亲自挑选并编排。", {
+        userNotice: "正在从你的曲库里选歌…",
+    });
 }
 
 function executeMusicCompanionStopTool(context?: ToolExecutionContext): ToolResult {
     const current = loadMusicCompanion();
-    if (current && context?.characterId && current.characterId !== context.characterId) return { name: "结束陪听", success: false, error: "当前陪听会话属于其他角色", userNotice: "当前角色没有开启陪听" };
+    if (current && context?.characterId && current.characterId !== context.characterId) {
+        return {
+            name: "结束陪听",
+            success: false,
+            error: "当前陪听会话属于其他角色",
+            userNotice: "当前角色没有开启陪听",
+        };
+    }
     stopMusicCompanion();
-    return musicToolSuccess("结束陪听", "陪听模式已结束，音乐保持当前状态。", { userNotice: "已结束陪听模式" });
+    return musicToolSuccess("结束陪听", "陪听模式已结束，音乐保持当前状态。", {
+        userNotice: "已结束陪听模式",
+    });
 }
 
 async function getMusicLoginSummary(): Promise<{ configured: boolean; loggedIn: boolean; nickname?: string }> {
@@ -2862,6 +2877,94 @@ async function executeTimedWakeTool(call: ToolCall, context?: ToolExecutionConte
         data: `已设置稍后主动联系：约 ${delayMinutes} 分钟后到点。\n目的：${intent}`,
         userNotice: `已设置 ${delayMinutes} 分钟后主动联系`,
     };
+}
+
+function isFlowusToolName(name: string): boolean {
+    return name === "创建待办"
+        || name === "查询待办"
+        || name === "完成待办"
+        || name === "保存聊天资料"
+        || name === "查询多维表"
+        || name === "搜索资料";
+}
+
+async function executeFlowusTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const capability = getInternalCapability(FLOWUS_CAPABILITY_ID);
+    if (!capability || !capability.enabled || capability.mode === "off") {
+        return {
+            name: call.name,
+            success: false,
+            error: "FlowUs 能力未启用",
+            userNotice: "FlowUs 能力未启用",
+        };
+    }
+
+    try {
+        if (call.name === "创建待办") {
+            const title = cleanToolString(call.args.title, 300);
+            if (!title) throw new Error("缺少待办标题");
+            const note = cleanToolString(call.args.note, 1000);
+            const status = cleanToolString(call.args.status, 50) || "待办";
+            const result = await createFlowusTodo(title, { note, status });
+            if (!result.ok || !result.data) throw new Error(result.error?.message || "创建失败");
+            return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已创建 FlowUs 待办" };
+        }
+
+        if (call.name === "查询待办") {
+            const status = cleanToolString(call.args.status, 50) || undefined;
+            const result = await queryFlowusTodo({ status });
+            if (!result.ok || !result.data) throw new Error(result.error?.message || "查询失败");
+            return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已查询 FlowUs 待办" };
+        }
+
+        if (call.name === "完成待办") {
+            const pageId = cleanToolString(call.args.pageId, 120);
+            if (!pageId) throw new Error("缺少 pageId");
+            const result = await updateFlowusTodo(pageId, { completed: true });
+            if (!result.ok || !result.data) throw new Error(result.error?.message || "更新失败");
+            return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已标记完成" };
+        }
+
+        if (call.name === "保存聊天资料") {
+            const title = cleanToolString(call.args.title, 200);
+            const content = cleanToolString(call.args.content, 8000);
+            if (!content) throw new Error("缺少 content");
+            const tags = (Array.isArray(call.args.tags) ? call.args.tags : ["聊天资料"]).filter((t): t is string => typeof t === "string");
+            const result = await saveChatFavorite({ title, content, tags, characterId: context?.characterId });
+            if (!result.ok || !result.data) throw new Error(result.error?.message || "保存失败");
+            return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已保存到 FlowUs 收件箱" };
+        }
+
+        if (call.name === "查询多维表") {
+            const databaseId = cleanToolString(call.args.databaseId, 120);
+            if (!databaseId) throw new Error("缺少 databaseId");
+            const result = await queryFlowusDatabaseFromTool(databaseId, call.args.filter as Record<string, unknown> | undefined);
+            if (!result.ok || !result.data) throw new Error(result.error?.message || "查询失败");
+            return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已查询多维表" };
+        }
+
+        if (call.name === "搜索资料") {
+            const query = cleanToolString(call.args.query, 200);
+            if (!query) throw new Error("缺少 query");
+            const result = await searchFlowus(query);
+            if (!result.ok || !result.data) throw new Error(result.error?.message || "搜索失败");
+            return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已搜索 FlowUs" };
+        }
+
+        throw new Error("未知的 FlowUs 动作");
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { name: call.name, success: false, error: message, userNotice: `FlowUs 失败：${message}` };
+    }
+}
+
+async function queryFlowusDatabaseFromTool(databaseId: string, filter?: Record<string, unknown>) {
+    const response = await fetch("/api/flowus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "query_database", databaseId, filter }),
+    });
+    return response.json() as Promise<{ ok: boolean; data?: { results: unknown[]; nextCursor: string | null; hasMore: boolean }; error?: { message: string } }>;
 }
 
 function clampImportance(value: unknown): number {

@@ -14,6 +14,7 @@ export const AGENT_COMPUTER_CAPABILITY_ID = "agent_computer";
 export const LOCAL_DATA_LIBRARY_CAPABILITY_ID = "local_data_library";
 export const TOOLBOX_MANAGEMENT_CAPABILITY_ID = "toolbox_management";
 export const TIMED_WAKE_CAPABILITY_ID = "timed_wake";
+export const FLOWUS_CAPABILITY_ID = "flowus";
 
 export type InternalToolDefinition = {
     name: string;
@@ -247,7 +248,7 @@ const MUSIC_CONTROL_USAGE_GUIDE = [
     '[执行动作:切换音乐({"action":"next"})]',
     "",
     "动作：开始陪听",
-    "描述：读取完整曲库并由当前角色根据真实歌词选出、编排一轮歌曲。",
+    "描述：把当前一对一聊天设为陪听会话。之后系统会把真实切歌和歌词交给你判断是否值得开口。",
     "参数：",
     "  - count (number): 本轮挑选数量，15-20，默认18",
     "  - mode (string): curated=角色编排，shuffle=在角色选好的歌曲中打乱；默认curated",
@@ -470,8 +471,19 @@ const MUSIC_SWITCH_PARAMETER_SCHEMA = JSON.stringify({
     required: ["action"],
 });
 
-const MUSIC_COMPANION_PARAMETER_SCHEMA = JSON.stringify({ type: "object", properties: { count: { type: "number", minimum: 15, maximum: 20, description: "本轮角色挑选歌曲数量，默认18" }, mode: { type: "string", enum: ["curated", "shuffle"], description: "curated按角色编排；shuffle仅打乱已选歌曲" }, force: { type: "boolean", description: "明确要求重新选一批时为true；否则复用24小时内上一轮" } } });
-const MUSIC_COMPANION_EMPTY_PARAMETER_SCHEMA = JSON.stringify({ type: "object", properties: {} });
+const MUSIC_COMPANION_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        count: { type: "number", minimum: 15, maximum: 20, description: "本轮角色挑选歌曲数量，默认18" },
+        mode: { type: "string", enum: ["curated", "shuffle"], description: "curated按角色编排；shuffle仅打乱已选歌曲" },
+        force: { type: "boolean", description: "明确要求重新选一批时为true；否则复用24小时内上一轮" },
+    },
+});
+
+const MUSIC_COMPANION_EMPTY_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {},
+});
 
 const CALENDAR_LIST_PARAMETER_SCHEMA = JSON.stringify({
     type: "object",
@@ -573,8 +585,16 @@ const MUSIC_CONTROL_SUBTOOLS: InternalToolDefinition[] = [
         description: "控制当前播放器上一首、下一首、暂停、继续或停止。",
         parameterSchema: MUSIC_SWITCH_PARAMETER_SCHEMA,
     },
-    { name: "开始陪听", description: "由当前角色读取用户曲库与歌词，亲自挑选并编排一轮陪听。", parameterSchema: MUSIC_COMPANION_PARAMETER_SCHEMA },
-    { name: "结束陪听", description: "结束当前角色与用户的陪听会话。", parameterSchema: MUSIC_COMPANION_EMPTY_PARAMETER_SCHEMA },
+    {
+        name: "开始陪听",
+        description: "开始当前角色与用户的克制式陪听会话。",
+        parameterSchema: MUSIC_COMPANION_PARAMETER_SCHEMA,
+    },
+    {
+        name: "结束陪听",
+        description: "结束当前角色与用户的陪听会话。",
+        parameterSchema: MUSIC_COMPANION_EMPTY_PARAMETER_SCHEMA,
+    },
 ];
 
 const CALENDAR_MANAGEMENT_SUBTOOLS: InternalToolDefinition[] = [
@@ -1201,6 +1221,136 @@ const TOOLBOX_MANAGEMENT_USAGE_GUIDE = [
     "说明：与 REST 工具对应动作类似，只能操作 AI 自己创建的组合工具或组合工具套件。",
 ].join("\n");
 
+const FLOWUS_USAGE_GUIDE = [
+    "以下是你获取指令的返回结果：",
+    "服务：FlowUs",
+    "用途：连接{{user}}的 FlowUs 工作区，管理待办、收藏聊天资料、查询多维表和检索知识库。",
+    "",
+    "执行时必须使用下面的具体动作名，不要输出“FlowUs”本身。",
+    "",
+    "动作：创建待办",
+    "描述：把一件需要后续处理的事写入 FlowUs 待办多维表。",
+    "参数：",
+    "  - title (string, 必填): 待办标题",
+    "  - note (string): 备注说明",
+    "  - status (string): 初始状态，如“待办”“进行中”，默认“待办”",
+    "示例：",
+    '[执行动作:创建待办({"title":"提醒用户周三开会","note":"来自聊天","status":"待办"})]',
+    "",
+    "动作：查询待办",
+    "描述：按状态筛选当前待办列表；不传 status 返回全部。",
+    "参数：",
+    "  - status (string): 如“待办”“完成”",
+    "示例：",
+    '[执行动作:查询待办({"status":"待办"})]',
+    "",
+    "动作：完成待办",
+    "描述：把指定待办标记为完成。",
+    "参数：",
+    "  - pageId (string, 必填): 待办记录 ID",
+    "示例：",
+    '[执行动作:完成待办({"pageId":"待办pageId"})]',
+    "",
+    "动作：保存聊天资料",
+    "描述：把聊天中值得保存的内容写入 FlowUs 收藏收件箱。",
+    "参数：",
+    "  - title (string): 资料标题，不提供时取内容前 60 字",
+    "  - content (string, 必填): 要保存的内容",
+    "  - tags (string[]): 标签数组，如 [\"想法\",\"重要\"]",
+    "示例：",
+    '[执行动作:保存聊天资料({"title":"用户提到的书单","content":"《百年孤独》《挪威的森林》","tags":["书单"]}]',
+    "",
+    "动作：查询多维表",
+    "描述：查询某个 FlowUs 多维表的数据。",
+    "参数：",
+    "  - databaseId (string, 必填): 数据库 ID",
+    "  - filter (object): 筛选条件，可省略",
+    "示例：",
+    '[执行动作:查询多维表({"databaseId":"数据库id"})]',
+    "",
+    "动作：搜索资料",
+    "描述：用关键词在 FlowUs 中搜索页面和数据库。",
+    "参数：",
+    "  - query (string, 必填): 搜索关键词",
+    "示例：",
+    '[执行动作:搜索资料({"query":"项目计划"})]',
+    "",
+    "查看类动作会返回结果，你可以基于结果继续回复；创建/更新/保存类动作执行时只输出执行动作指令，不要附加闲聊内容。",
+].join("\n");
+
+const FLOWUS_SUBTOOLS: InternalToolDefinition[] = [
+    {
+        name: "创建待办",
+        description: "在 FlowUs 待办多维表中创建一条待办。",
+        parameterSchema: JSON.stringify({
+            type: "object",
+            properties: {
+                title: { type: "string", description: "待办标题" },
+                note: { type: "string", description: "备注说明" },
+                status: { type: "string", description: "初始状态，默认“待办”" },
+            },
+            required: ["title"],
+        }),
+    },
+    {
+        name: "查询待办",
+        description: "查询 FlowUs 待办多维表，可按状态筛选。",
+        parameterSchema: JSON.stringify({
+            type: "object",
+            properties: {
+                status: { type: "string", description: "状态筛选，如“待办”“完成”" },
+            },
+        }),
+    },
+    {
+        name: "完成待办",
+        description: "把 FlowUs 中的指定待办标记为完成。",
+        parameterSchema: JSON.stringify({
+            type: "object",
+            properties: {
+                pageId: { type: "string", description: "待办记录 ID" },
+            },
+            required: ["pageId"],
+        }),
+    },
+    {
+        name: "保存聊天资料",
+        description: "把聊天中的重要内容保存到 FlowUs 收藏收件箱。",
+        parameterSchema: JSON.stringify({
+            type: "object",
+            properties: {
+                title: { type: "string", description: "资料标题" },
+                content: { type: "string", description: "要保存的内容" },
+                tags: { type: "array", items: { type: "string" }, description: "标签数组" },
+            },
+            required: ["content"],
+        }),
+    },
+    {
+        name: "查询多维表",
+        description: "查询 FlowUs 某个多维表的数据。",
+        parameterSchema: JSON.stringify({
+            type: "object",
+            properties: {
+                databaseId: { type: "string", description: "数据库 ID" },
+                filter: { type: "object", description: "筛选条件" },
+            },
+            required: ["databaseId"],
+        }),
+    },
+    {
+        name: "搜索资料",
+        description: "用关键词在 FlowUs 中搜索页面和数据库。",
+        parameterSchema: JSON.stringify({
+            type: "object",
+            properties: {
+                query: { type: "string", description: "搜索关键词" },
+            },
+            required: ["query"],
+        }),
+    },
+];
+
 const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: MEMORY_WRITE_CAPABILITY_ID,
@@ -1278,6 +1428,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         id: TIMED_WAKE_CAPABILITY_ID,
         name: "稍后主动联系",
         description: "让角色约定「过一会儿主动联系对方」：现在设定一个延时与想法，到点后由角色决定主动发消息或静默（不是睡觉醒来）。",
+        enabled: false,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
+        id: FLOWUS_CAPABILITY_ID,
+        name: "FlowUs",
+        description: "连接{{user}}的 FlowUs 工作区，管理待办、收藏聊天资料、查询多维表和检索知识库。",
         enabled: false,
         mode: "auto",
         createdAt: 0,
@@ -1388,6 +1547,14 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             usageGuide: TIMED_WAKE_USAGE_GUIDE,
         };
     }
+    if (capability.id === FLOWUS_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: "{}",
+            usageGuide: FLOWUS_USAGE_GUIDE,
+        };
+    }
     return null;
 }
 
@@ -1410,6 +1577,9 @@ export function getInternalCapabilitySubToolDefinition(
     if (capability.id === TOOLBOX_MANAGEMENT_CAPABILITY_ID) {
         return TOOLBOX_MANAGEMENT_SUBTOOLS.find(tool => tool.name === name) ?? null;
     }
+    if (capability.id === FLOWUS_CAPABILITY_ID) {
+        return FLOWUS_SUBTOOLS.find(tool => tool.name === name) ?? null;
+    }
     return null;
 }
 
@@ -1430,6 +1600,9 @@ export function getInternalCapabilitySubToolDefinitions(
     }
     if (capability.id === TOOLBOX_MANAGEMENT_CAPABILITY_ID) {
         return TOOLBOX_MANAGEMENT_SUBTOOLS;
+    }
+    if (capability.id === FLOWUS_CAPABILITY_ID) {
+        return FLOWUS_SUBTOOLS;
     }
     return [];
 }
