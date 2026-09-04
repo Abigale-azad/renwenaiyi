@@ -20,9 +20,39 @@ import {
   projectSearchResults,
   richTextFromString,
 } from "@/lib/server/flowus-projections";
-import type { FlowusConfig, FlowusDatabase, FlowusFilter, FlowusList, FlowusPage, FlowusSort } from "@/lib/flowus-types";
+import type { FlowusConfig, FlowusDatabase, FlowusFilter, FlowusList, FlowusPage, FlowusPropertySchema, FlowusSort } from "@/lib/flowus-types";
 
 export const runtime = "nodejs";
+
+/**
+ * 根据数据库 schema 动态构建写入用的 properties 对象。
+ * 只写入表中实际存在且类型匹配的字段，避免触发 Invalid database page properties。
+ */
+function buildPropertiesFromSchema(
+  schema: Record<string, FlowusPropertySchema>,
+  desired: Record<string, { type: FlowusPropertySchema["type"]; value: unknown }>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  const byName = new Map<string, FlowusPropertySchema>();
+  for (const [key, prop] of Object.entries(schema)) {
+    const name = prop.name ?? key;
+    byName.set(name, prop);
+  }
+  for (const [name, spec] of Object.entries(desired)) {
+    const prop = byName.get(name);
+    if (!prop || prop.type !== spec.type) continue;
+    result[name] = spec.value;
+  }
+  return result;
+}
+
+/** 在 schema 中找到 type=title 的属性名（通常叫 Name，但也可能是其他名字） */
+function findTitlePropertyName(schema: Record<string, FlowusPropertySchema>): string {
+  for (const [key, prop] of Object.entries(schema)) {
+    if (prop.type === "title") return prop.name ?? key;
+  }
+  return "Name";
+}
 export const dynamic = "force-dynamic";
 
 const HTTP_STATUS_BY_CODE: Record<FlowusErrorCode | "flowus_unconfigured" | "flowus_bad_request", number> = {
@@ -326,13 +356,25 @@ export async function POST(request: NextRequest) {
       if (!databaseId) return badRequest("未配置待办多维表，请先连接 FlowUs 并选择/创建待办表。");
       if (!title) return badRequest("缺少待办标题 title。");
 
+      // 先获取数据库 schema，只写入表中实际存在的字段
+      const dbResult = await flowusApiFetchWithAccount<FlowusDatabase>("GET", `databases/${databaseId}`, undefined, cookie, account.id);
+      const schema = dbResult.ok ? dbResult.data.properties : {};
+      const titleField = findTitlePropertyName(schema);
       const statusField = config?.todo_status_field || "状态";
-      const properties: Record<string, unknown> = {
-        Name: { title: [{ type: "text", text: { content: title } }] },
-        [statusField]: { select: { name: status } },
+
+      const desired: Record<string, { type: FlowusPropertySchema["type"]; value: unknown }> = {
+        [titleField]: { type: "title", value: [{ type: "text", text: { content: title } }] },
       };
-      if (note) properties["备注"] = { rich_text: [{ type: "text", text: { content: note } }] };
-      if (characterId) properties["来源角色"] = { rich_text: [{ type: "text", text: { content: characterId } }] };
+      desired[statusField] = { type: "select", value: { name: status } };
+      if (note) desired["备注"] = { type: "rich_text", value: [{ type: "text", text: { content: note } }] };
+      if (characterId) desired["来源角色"] = { type: "rich_text", value: [{ type: "text", text: { content: characterId } }] };
+
+      const properties = buildPropertiesFromSchema(schema, desired);
+
+      // 至少得有标题字段，否则写不了
+      if (!properties[titleField]) {
+        return badRequest("待办多维表中未找到标题字段，请检查表结构。");
+      }
 
       const op = await createFlowusOperation(account.id, {
         character_id: characterId,
@@ -449,13 +491,23 @@ export async function POST(request: NextRequest) {
       if (!databaseId) return badRequest("未配置收藏收件箱多维表。");
       if (!title && !content) return badRequest("至少需要 title 或 content。");
 
-      const properties: Record<string, unknown> = {
-        Name: { title: [{ type: "text", text: { content: title || content.slice(0, 60) } }] },
-        内容: { rich_text: [{ type: "text", text: { content: content } }] },
-        标签: { multi_select: tags.map((name) => ({ name })) },
+      // 先获取数据库 schema，只写入表中实际存在的字段
+      const dbResult = await flowusApiFetchWithAccount<FlowusDatabase>("GET", `databases/${databaseId}`, undefined, cookie, account.id);
+      const schema = dbResult.ok ? dbResult.data.properties : {};
+      const titleField = findTitlePropertyName(schema);
+
+      const desired: Record<string, { type: FlowusPropertySchema["type"]; value: unknown }> = {
+        [titleField]: { type: "title", value: [{ type: "text", text: { content: title || content.slice(0, 60) } }] },
       };
-      if (characterId) properties["来源角色"] = { rich_text: [{ type: "text", text: { content: characterId } }] };
-      if (url) properties["原文链接"] = { url };
+      if (content) desired["内容"] = { type: "rich_text", value: [{ type: "text", text: { content } }] };
+      if (tags.length) desired["标签"] = { type: "multi_select", value: tags.map((name) => ({ name })) };
+      if (characterId) desired["来源角色"] = { type: "rich_text", value: [{ type: "text", text: { content: characterId } }] };
+      if (url) desired["原文链接"] = { type: "url", value: url };
+
+      const properties = buildPropertiesFromSchema(schema, desired);
+      if (!properties[titleField]) {
+        return badRequest("收件箱多维表中未找到标题字段，请检查表结构。");
+      }
 
       const op = await createFlowusOperation(account.id, {
         character_id: characterId,
