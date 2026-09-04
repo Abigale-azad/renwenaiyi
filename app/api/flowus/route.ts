@@ -24,8 +24,8 @@ import type { FlowusConfig, FlowusDatabase, FlowusFilter, FlowusList, FlowusPage
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const HTTP_STATUS_BY_CODE: Record<FlowusErrorCode, number> = {
-  flowus_unconfigured: 503,
+const HTTP_STATUS_BY_CODE: Record<FlowusErrorCode | "flowus_unconfigured" | "flowus_bad_request", number> = {
+  flowus_unconfigured: 400,
   flowus_unauthorized: 401,
   flowus_forbidden: 403,
   flowus_not_found: 404,
@@ -35,6 +35,7 @@ const HTTP_STATUS_BY_CODE: Record<FlowusErrorCode, number> = {
   flowus_upstream_error: 502,
   flowus_invalid_response: 502,
   flowus_disallowed_path: 403,
+  flowus_bad_request: 400,
 };
 
 const jsonHeaders = { "Cache-Control": "no-store" };
@@ -70,6 +71,7 @@ function isCharacterAllowed(config: FlowusConfig | null, characterId: string | n
 }
 
 function requireCharacterPermission(config: FlowusConfig | null, characterId: string | null): NextResponse | null {
+  if (!config) return fail("flowus_unconfigured", "尚未完成 FlowUs 配置，请先选择待办多维表和收藏收件箱。");
   if (!isCharacterAllowed(config, characterId)) {
     return fail("flowus_forbidden", "当前角色没有权限操作此 FlowUs 数据。");
   }

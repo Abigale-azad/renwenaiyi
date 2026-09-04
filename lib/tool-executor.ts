@@ -2996,14 +2996,14 @@ async function executeFlowusTool(call: ToolCall, context?: ToolExecutionContext)
             if (!title) throw new Error("缺少待办标题");
             const note = cleanToolString(call.args.note, 1000);
             const status = cleanToolString(call.args.status, 50) || "待办";
-            const result = await createFlowusTodo(title, { note, status });
+            const result = await createFlowusTodo(title, { note, status, characterId: context?.characterId });
             if (!result.ok || !result.data) throw new Error(result.error?.message || "创建失败");
             return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已创建 FlowUs 待办" };
         }
 
         if (call.name === "查询待办") {
             const status = cleanToolString(call.args.status, 50) || undefined;
-            const result = await queryFlowusTodo({ status });
+            const result = await queryFlowusTodo({ status, characterId: context?.characterId });
             if (!result.ok || !result.data) throw new Error(result.error?.message || "查询失败");
             return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已查询 FlowUs 待办" };
         }
@@ -3011,7 +3011,7 @@ async function executeFlowusTool(call: ToolCall, context?: ToolExecutionContext)
         if (call.name === "完成待办") {
             const pageId = cleanToolString(call.args.pageId, 120);
             if (!pageId) throw new Error("缺少 pageId");
-            const result = await updateFlowusTodo(pageId, { completed: true });
+            const result = await updateFlowusTodo(pageId, { completed: true, characterId: context?.characterId });
             if (!result.ok || !result.data) throw new Error(result.error?.message || "更新失败");
             return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已标记完成" };
         }
@@ -3029,7 +3029,7 @@ async function executeFlowusTool(call: ToolCall, context?: ToolExecutionContext)
         if (call.name === "查询多维表") {
             const databaseId = cleanToolString(call.args.databaseId, 120);
             if (!databaseId) throw new Error("缺少 databaseId");
-            const result = await queryFlowusDatabaseFromTool(databaseId, call.args.filter as Record<string, unknown> | undefined);
+            const result = await queryFlowusDatabaseFromTool(databaseId, call.args.filter as Record<string, unknown> | undefined, context?.characterId);
             if (!result.ok || !result.data) throw new Error(result.error?.message || "查询失败");
             return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已查询多维表" };
         }
@@ -3037,7 +3037,7 @@ async function executeFlowusTool(call: ToolCall, context?: ToolExecutionContext)
         if (call.name === "搜索资料") {
             const query = cleanToolString(call.args.query, 200);
             if (!query) throw new Error("缺少 query");
-            const result = await searchFlowus(query);
+            const result = await searchFlowus(query, { characterId: context?.characterId });
             if (!result.ok || !result.data) throw new Error(result.error?.message || "搜索失败");
             return { name: call.name, success: true, data: JSON.stringify(result.data, null, 2), userNotice: "已搜索 FlowUs" };
         }
@@ -3049,11 +3049,11 @@ async function executeFlowusTool(call: ToolCall, context?: ToolExecutionContext)
     }
 }
 
-async function queryFlowusDatabaseFromTool(databaseId: string, filter?: Record<string, unknown>) {
+async function queryFlowusDatabaseFromTool(databaseId: string, filter?: Record<string, unknown>, characterId?: string) {
     const response = await fetch("/api/flowus", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "query_database", databaseId, filter }),
+        body: JSON.stringify({ action: "query_database", databaseId, filter, characterId }),
     });
     return response.json() as Promise<{ ok: boolean; data?: { results: unknown[]; nextCursor: string | null; hasMore: boolean }; error?: { message: string } }>;
 }

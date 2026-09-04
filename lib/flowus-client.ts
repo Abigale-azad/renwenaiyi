@@ -134,27 +134,27 @@ export async function archiveFlowusDatabaseRow(pageId: string) {
   return post<{ id: string; title: string }>("archive_database_row", { pageId });
 }
 
-export async function createFlowusTodo(title: string, options: { status?: string; note?: string; databaseId?: string } = {}) {
+export async function createFlowusTodo(title: string, options: { status?: string; note?: string; databaseId?: string; characterId?: string } = {}) {
   return post<{ id: string; title: string }>("create_todo", { title, ...options });
 }
 
-export async function queryFlowusTodo(options: { status?: string; databaseId?: string } = {}) {
+export async function queryFlowusTodo(options: { status?: string; databaseId?: string; characterId?: string } = {}) {
   return post<{ results: unknown[]; nextCursor: string | null; hasMore: boolean }>("query_todo", options);
 }
 
 export async function updateFlowusTodo(
   pageId: string,
-  options: { completed?: boolean; status?: string; note?: string },
+  options: { completed?: boolean; status?: string; note?: string; characterId?: string },
 ) {
   return post<{ id: string; title: string }>("update_todo", { pageId, ...options });
 }
 
-export async function searchFlowus(query: string) {
-  return post<{ results: unknown[]; nextCursor: string | null; hasMore: boolean }>("search", { query });
+export async function searchFlowus(query: string, options: { characterId?: string } = {}) {
+  return post<{ results: unknown[]; nextCursor: string | null; hasMore: boolean }>("search", { query, ...options });
 }
 
-export async function semanticSearchFlowus(query: string) {
-  return post<{ results: { pageId: string; title: string; snippet: string; score: number; url: string }[] }>("semantic_search", { query });
+export async function semanticSearchFlowus(query: string, options: { characterId?: string } = {}) {
+  return post<{ results: { pageId: string; title: string; snippet: string; score: number; url: string }[] }>("semantic_search", { query, ...options });
 }
 
 export async function saveChatFavorite(payload: {
