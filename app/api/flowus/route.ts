@@ -376,6 +376,16 @@ export async function POST(request: NextRequest) {
         return badRequest("待办多维表中未找到标题字段，请检查表结构。");
       }
 
+      console.log("[create_todo] debug:", {
+        databaseId,
+        titleField,
+        statusField,
+        schemaKeys: Object.keys(schema),
+        schemaTypes: Object.fromEntries(Object.entries(schema).map(([k, v]) => [k, v.type])),
+        propertiesKeys: Object.keys(properties),
+        properties,
+      });
+
       const op = await createFlowusOperation(account.id, {
         character_id: characterId,
         action: "create_todo",
