@@ -26,6 +26,7 @@ import {
   getFlowusConfigClient,
   searchFlowusDatabases,
   searchFlowusPages,
+  getFlowusPage,
   updateFlowusConfigClient,
   testFlowusConnection,
 } from "@/lib/flowus-client";
@@ -47,6 +48,10 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
   const [pageQuery, setPageQuery] = useState("");
   const [pageOptions, setPageOptions] = useState<DatabaseOption[]>([]);
   const [searchingPages, setSearchingPages] = useState(false);
+  const [pageHasMore, setPageHasMore] = useState(false);
+  const [pageNextCursor, setPageNextCursor] = useState<string | null>(null);
+  const [pageLinkInput, setPageLinkInput] = useState("");
+  const [resolvingLink, setResolvingLink] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [userInfo, setUserInfo] = useState<{ id: string; name: string } | null>(null);
@@ -140,18 +145,56 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
     }
   }
 
-  async function searchPages() {
+  async function searchPages(loadMore = false) {
     if (searchingPages) return;
     setSearchingPages(true);
     setError("");
     try {
-      const payload = await searchFlowusPages(pageQuery.trim() || "");
+      const cursor = loadMore ? pageNextCursor ?? undefined : undefined;
+      const payload = await searchFlowusPages(pageQuery.trim() || "", cursor);
       if (!payload.ok || !payload.data) throw new Error(payload.error?.message || "搜索失败。");
-      setPageOptions(payload.data.results);
+      setPageOptions((prev) => loadMore ? [...prev, ...payload.data!.results] : payload.data!.results);
+      setPageHasMore(payload.data.hasMore);
+      setPageNextCursor(payload.data.nextCursor);
     } catch (err) {
       setError(err instanceof Error ? err.message : "搜索失败。");
     } finally {
       setSearchingPages(false);
+    }
+  }
+
+  function pickParentPage(id: string, title: string) {
+    setConfig((prev) => prev ? { ...prev, parent_page_id: id, parent_page_title: title } : prev);
+    setPageOptions([]);
+    setPageQuery("");
+  }
+
+  // 从 FlowUs 页面链接或纯 ID 中解析页面 ID，支持带横线或不带横线的 UUID
+  function parsePageId(input: string): string | null {
+    const match = input.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+      ?? input.match(/\b[0-9a-f]{32}\b/i);
+    return match ? match[0] : null;
+  }
+
+  async function resolvePageLink() {
+    if (resolvingLink) return;
+    const pageId = parsePageId(pageLinkInput.trim());
+    if (!pageId) {
+      setError("无法从输入中识别页面 ID，请粘贴完整的 FlowUs 页面链接。");
+      return;
+    }
+    setResolvingLink(true);
+    setError("");
+    try {
+      const payload = await getFlowusPage(pageId);
+      if (!payload.ok || !payload.data) throw new Error(payload.error?.message || "无法访问该页面。");
+      pickParentPage(payload.data.id, payload.data.title);
+      setPageLinkInput("");
+      onNotice(`已设置父页面：${payload.data.title || payload.data.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "无法访问该页面。请确认它已授权给当前集成。");
+    } finally {
+      setResolvingLink(false);
     }
   }
 
@@ -314,24 +357,39 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
             <p className="mt-1 text-[13px] leading-5 opacity-60">新建的待办表和收件箱会放在这个页面下面。页面级集成必须选择一个已授权的页面作为父级。</p>
 
             <div className="mt-4 flex gap-2">
-              <input className="ui-input flex-1" placeholder="搜索 FlowUs 页面" value={pageQuery} onChange={(e) => setPageQuery(e.target.value)} />
+              <input className="ui-input flex-1" placeholder="搜索 FlowUs 页面（留空列出全部）" value={pageQuery} onChange={(e) => setPageQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void searchPages(); }} />
               <button type="button" className="ui-btn ui-btn-secondary shrink-0" onClick={() => void searchPages()} disabled={searchingPages}><Search size={16} />{searchingPages ? "搜索中" : "搜索"}</button>
             </div>
+            <button type="button" className="ui-btn ui-btn-outline mt-2 w-full" onClick={() => { setPageQuery(""); void searchPages(); }} disabled={searchingPages}>
+              {searchingPages ? <Loader2 size={16} className="animate-spin" /> : <FolderOpen size={16} />}浏览全部页面
+            </button>
 
             {pageOptions.length > 0 && (
-              <div className="mt-3 max-h-48 overflow-auto rounded-2xl border border-black/5">
-                {pageOptions.map((page) => (
-                  <div key={page.id} className="flex items-center justify-between border-b border-black/5 px-3 py-2 last:border-0">
-                    <span className="truncate text-[13px]">{page.title || "未命名页面"}</span>
-                    <button type="button" className="text-[12px] text-violet-500" onClick={() => {
-                      setConfig((prev) => prev ? { ...prev, parent_page_id: page.id, parent_page_title: page.title } : prev);
-                      setPageOptions([]);
-                      setPageQuery("");
-                    }}>设为父页面</button>
-                  </div>
-                ))}
-              </div>
+              <>
+                <div className="mt-3 max-h-64 overflow-auto rounded-2xl border border-black/5">
+                  {pageOptions.map((page) => (
+                    <div key={page.id} className="flex items-center justify-between border-b border-black/5 px-3 py-2 last:border-0">
+                      <span className="truncate text-[13px]">{page.title || "未命名页面"}</span>
+                      <button type="button" className="text-[12px] text-violet-500 shrink-0" onClick={() => pickParentPage(page.id, page.title)}>设为父页面</button>
+                    </div>
+                  ))}
+                </div>
+                {pageHasMore && (
+                  <button type="button" className="ui-btn ui-btn-outline mt-2 w-full" onClick={() => void searchPages(true)} disabled={searchingPages}>
+                    {searchingPages ? <Loader2 size={16} className="animate-spin" /> : null}加载更多
+                  </button>
+                )}
+              </>
             )}
+
+            <div className="ui-row-divider !mx-0 my-4" />
+            <p className="text-[12px] leading-5 opacity-60">搜索不到？在 FlowUs 里打开目标页面，点右上角「分享 → 复制链接」，粘贴到这里：</p>
+            <div className="mt-2 flex gap-2">
+              <input className="ui-input flex-1" placeholder="粘贴 FlowUs 页面链接" value={pageLinkInput} onChange={(e) => setPageLinkInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void resolvePageLink(); }} />
+              <button type="button" className="ui-btn ui-btn-secondary shrink-0" onClick={() => void resolvePageLink()} disabled={resolvingLink || !pageLinkInput.trim()}>
+                {resolvingLink ? <Loader2 size={16} className="animate-spin" /> : <ExternalLink size={16} />}设为父页面
+              </button>
+            </div>
 
             <div className="mt-4 rounded-2xl bg-black/[0.02] px-3 py-2">
               <div className="text-[12px] opacity-60">当前父页面</div>

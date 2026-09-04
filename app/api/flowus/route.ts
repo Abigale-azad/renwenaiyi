@@ -125,16 +125,35 @@ export async function POST(request: NextRequest) {
 
     if (action === "search_pages") {
       const query = safeString(body.query) || "";
+      const startCursor = safeString(body.startCursor) || undefined;
       const result = await flowusApiFetchWithAccount<FlowusList<FlowusPage | FlowusDatabase>>(
         "POST",
         "search",
-        { query, filter: { value: "page", property: "object" }, page_size: 20 },
+        {
+          query,
+          filter: { value: "page", property: "object" },
+          sort: { direction: "descending", timestamp: "last_edited_time" },
+          start_cursor: startCursor ?? null,
+          page_size: 50,
+        },
         cookie,
         account.id,
       );
       if (!result.ok) return fail(result.code, result.message, result.requestId);
       const pages = (result.data.results ?? []).filter((r): r is FlowusPage => "object" in r && r.object === "page");
-      return ok({ results: pages.map((p) => ({ id: p.id, title: projectPage(p).title })) });
+      return ok({
+        results: pages.map((p) => ({ id: p.id, title: projectPage(p).title })),
+        hasMore: Boolean(result.data.has_more),
+        nextCursor: result.data.next_cursor ?? null,
+      });
+    }
+
+    if (action === "get_page") {
+      const pageId = safeString(body.pageId);
+      if (!pageId) return badRequest("缺少 pageId。");
+      const result = await flowusApiFetchWithAccount<FlowusPage>("GET", `pages/${pageId}`, undefined, cookie, account.id);
+      if (!result.ok) return fail(result.code, result.message, result.requestId);
+      return ok(projectPage(result.data));
     }
 
     if (action === "get_database") {

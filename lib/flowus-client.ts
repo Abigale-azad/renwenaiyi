@@ -97,8 +97,12 @@ export async function searchFlowusDatabases(query: string): Promise<FlowusApiRes
   return post("search_databases", { query });
 }
 
-export async function searchFlowusPages(query: string): Promise<FlowusApiResponse<{ results: { id: string; title: string }[] }>> {
-  return post("search_pages", { query });
+export async function searchFlowusPages(query: string, startCursor?: string): Promise<FlowusApiResponse<{ results: { id: string; title: string }[]; hasMore: boolean; nextCursor: string | null }>> {
+  return post("search_pages", { query, startCursor });
+}
+
+export async function getFlowusPage(pageId: string): Promise<FlowusApiResponse<{ id: string; title: string }>> {
+  return post("get_page", { pageId });
 }
 
 export async function getFlowusDatabase(databaseId: string): Promise<FlowusApiResponse<{ id: string; title: string; properties: { id: string; name: string; type: string; options?: { name: string; color?: string }[] }[] }>> {
