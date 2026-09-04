@@ -18,6 +18,7 @@ import {
   projectPage,
   projectPageList,
   projectSearchResults,
+  richTextFromString,
 } from "@/lib/server/flowus-projections";
 import type { FlowusConfig, FlowusDatabase, FlowusFilter, FlowusList, FlowusPage, FlowusSort } from "@/lib/flowus-types";
 
@@ -209,7 +210,7 @@ export async function POST(request: NextRequest) {
         "pages",
         {
           parent: { database_id: databaseId },
-          properties: { title: makeTitleProperty(title), ...(properties ?? {}) },
+          properties: { Name: { title: richTextFromString(title) }, ...(properties ?? {}) },
         },
         cookie,
         account.id,
@@ -325,12 +326,13 @@ export async function POST(request: NextRequest) {
       if (!databaseId) return badRequest("未配置待办多维表，请先连接 FlowUs 并选择/创建待办表。");
       if (!title) return badRequest("缺少待办标题 title。");
 
+      const statusField = config?.todo_status_field || "状态";
       const properties: Record<string, unknown> = {
-        Name: makeTitleProperty(title),
-        状态: { select: { name: status } },
+        Name: { title: richTextFromString(title) },
+        [statusField]: { select: { name: status } },
       };
-      if (note) properties["备注"] = { rich_text: [{ type: "text", text: { content: note } }] };
-      if (characterId) properties["来源角色"] = { rich_text: [{ type: "text", text: { content: characterId } }] };
+      if (note) properties["备注"] = { rich_text: richTextFromString(note) };
+      if (characterId) properties["来源角色"] = { rich_text: richTextFromString(characterId) };
 
       const op = await createFlowusOperation(account.id, {
         character_id: characterId,
@@ -394,7 +396,7 @@ export async function POST(request: NextRequest) {
       } else if (status) {
         properties[statusField] = { select: { name: status } };
       }
-      if (note) properties["备注"] = { rich_text: [{ type: "text", text: { content: note } }] };
+      if (note) properties["备注"] = { rich_text: richTextFromString(note) };
 
       const result = await flowusApiFetchWithAccount<FlowusPage>(
         "PATCH",
@@ -448,11 +450,11 @@ export async function POST(request: NextRequest) {
       if (!title && !content) return badRequest("至少需要 title 或 content。");
 
       const properties: Record<string, unknown> = {
-        Name: makeTitleProperty(title || content.slice(0, 60)),
-        内容: { rich_text: [{ type: "text", text: { content: content } }] },
+        Name: { title: richTextFromString(title || content.slice(0, 60)) },
+        内容: { rich_text: richTextFromString(content) },
         标签: { multi_select: tags.map((name) => ({ name })) },
       };
-      if (characterId) properties["来源角色"] = { rich_text: [{ type: "text", text: { content: characterId } }] };
+      if (characterId) properties["来源角色"] = { rich_text: richTextFromString(characterId) };
       if (url) properties["原文链接"] = { url };
 
       const op = await createFlowusOperation(account.id, {
