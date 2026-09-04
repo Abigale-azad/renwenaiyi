@@ -36,7 +36,7 @@ function rowToConfig(row: FlowusConfigRow): FlowusConfig {
 
 export async function getFlowusConfig(accountId: string): Promise<FlowusConfig | null> {
   const result = await supabaseRestFetch<FlowusConfigRow[]>(
-    `app_flowus_configs?account_id=eq.${encodeSupabaseFilter(accountId)}&select=*&limit=1`,
+    `app_flowus_configs?account_id=eq.${encodeSupabaseFilter(accountId)}&select=*&order=updated_at.desc&limit=1`,
     { method: "GET" },
   );
   if (!result.ok) {

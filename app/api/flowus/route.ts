@@ -71,7 +71,10 @@ function isCharacterAllowed(config: FlowusConfig | null, characterId: string | n
 }
 
 function requireCharacterPermission(config: FlowusConfig | null, characterId: string | null): NextResponse | null {
-  if (!config) return fail("flowus_unconfigured", "尚未完成 FlowUs 配置，请先选择待办多维表和收藏收件箱。");
+  if (!config) return fail("flowus_unconfigured", "尚未完成 FlowUs 配置（未找到配置记录），请先在设置中选择待办多维表和收藏收件箱并保存。");
+  if (!config.todo_database_id || !config.inbox_database_id) {
+    return fail("flowus_unconfigured", "尚未完成 FlowUs 配置：待办多维表或收藏收件箱未选择，请在设置中配置后再试。");
+  }
   if (!isCharacterAllowed(config, characterId)) {
     return fail("flowus_forbidden", "当前角色没有权限操作此 FlowUs 数据。");
   }
