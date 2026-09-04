@@ -183,11 +183,33 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
     }
   }
 
-  // 从 FlowUs 页面链接或纯 ID 中解析页面 ID，支持带横线或不带横线的 UUID
+  // 从 FlowUs 页面链接或纯 ID 中解析页面 ID
+  // 支持：https://flowus.cn/<uuid>、https://xxx.flowus.cn/<uuid>、
+  //       https://flowus.cn/share/<uuid>、纯 UUID（带或不带横线）
   function parsePageId(input: string): string | null {
-    const match = input.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
-      ?? input.match(/\b[0-9a-f]{32}\b/i);
-    return match ? match[0] : null;
+    const trimmed = input.trim();
+    // 1. 先尝试匹配带横线的 UUID（最常见）
+    const uuidDash = trimmed.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (uuidDash) return uuidDash[0];
+    // 2. 尝试匹配不带横线的 32 位 UUID
+    const uuidNoDash = trimmed.match(/\b[0-9a-f]{32}\b/i);
+    if (uuidNoDash) {
+      const raw = uuidNoDash[0];
+      return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20)}`;
+    }
+    // 3. 从 URL 路径中提取最后一段（可能是页面 ID 或别名）
+    try {
+      const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+      const segments = url.pathname.split("/").filter(Boolean);
+      // 去掉 share、page 等前缀段
+      const lastSegment = segments[segments.length - 1];
+      if (lastSegment && /^[0-9a-f-]{32,36}$/i.test(lastSegment)) {
+        return parsePageId(lastSegment);
+      }
+    } catch {
+      // 不是合法 URL，忽略
+    }
+    return null;
   }
 
   async function resolvePageLink() {
