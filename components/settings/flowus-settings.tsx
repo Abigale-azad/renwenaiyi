@@ -11,6 +11,9 @@ import {
   Search,
   ShieldCheck,
   Table2,
+  RefreshCw,
+  User,
+  Users,
 } from "lucide-react";
 
 import type { FlowusConfig } from "@/lib/flowus-types";
@@ -22,6 +25,7 @@ import {
   getFlowusConfigClient,
   searchFlowusDatabases,
   updateFlowusConfigClient,
+  testFlowusConnection,
 } from "@/lib/flowus-client";
 
 interface DatabaseOption {
@@ -39,6 +43,8 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
   const [dbOptions, setDbOptions] = useState<DatabaseOption[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [userInfo, setUserInfo] = useState<{ id: string; name: string } | null>(null);
 
   async function refresh() {
     setBusy(true);
@@ -48,6 +54,11 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
       if (!payload.ok || !payload.data) throw new Error(payload.error?.message || "读取连接状态失败。");
       setConnected(payload.data.connected);
       setConfig(payload.data.config);
+      if (payload.data.connected) {
+        // 已连接时顺便拉一下用户信息做概览展示
+        const me = await testFlowusConnection();
+        if (me.ok && me.data) setUserInfo(me.data);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "读取连接状态失败。");
     } finally {
@@ -84,11 +95,28 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
       if (!payload.ok) throw new Error(payload.error?.message || "断开失败。");
       setConnected(false);
       setConfig(null);
+      setUserInfo(null);
       onNotice("已断开 FlowUs");
     } catch (err) {
       setError(err instanceof Error ? err.message : "断开失败。");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleTest() {
+    if (testing) return;
+    setTesting(true);
+    setError("");
+    try {
+      const result = await testFlowusConnection();
+      if (!result.ok || !result.data) throw new Error(result.error?.message || "测试失败");
+      setUserInfo(result.data);
+      onNotice(`连接正常：${result.data.name || result.data.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "测试失败");
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -200,15 +228,61 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
         </section>
       ) : (
         <>
-          <section className="app-card p-5">
+          <section className="app-card p-5" style={{ background: "linear-gradient(145deg, color-mix(in srgb, var(--c-surface) 90%, #10b981 10%), var(--c-surface))" }}>
             <div className="flex items-start gap-3">
-              <CheckCircle2 size={21} className="mt-0.5 shrink-0 text-emerald-500" />
-              <div className="flex-1">
-                <h3 className="font-semibold">连接可用</h3>
-                <p className="mt-1 text-[13px] leading-5 opacity-60">已接入 FlowUs。可在下方配置收藏收件箱与待办多维表。</p>
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-500"><CheckCircle2 size={23} /></span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-[17px] font-semibold">FlowUs 已连接</h2>
+                  {busy ? <Loader2 size={15} className="animate-spin opacity-60" /> : <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-500">正常</span>}
+                </div>
+                <p className="mt-1 text-[13px] leading-5 opacity-60 truncate">
+                  {userInfo ? userInfo.name || userInfo.id : "连接到你的 FlowUs 工作区"}
+                </p>
               </div>
             </div>
-            <button type="button" className="ui-btn ui-btn-outline mt-4 w-full" onClick={() => void disconnect()} disabled={busy}><LogOut size={16} />断开连接</button>
+            <div className="mt-4 flex gap-2">
+              <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => void handleTest()} disabled={testing}>
+                {testing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                {testing ? "测试中" : "测试连接"}
+              </button>
+              <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => void disconnect()} disabled={busy}>
+                <LogOut size={16} />断开
+              </button>
+            </div>
+          </section>
+
+          <section className="app-card p-5">
+            <h3 className="font-semibold flex items-center gap-2"><User size={18} />当前概览</h3>
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="text-[12px] opacity-50 w-20 shrink-0">工作区</span>
+                <span className="text-[13px] truncate flex-1">{userInfo?.name || userInfo?.id || "—"}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[12px] opacity-50 w-20 shrink-0">待办多维表</span>
+                <span className="text-[13px] truncate flex-1">{config?.todo_database_title || config?.todo_database_id || <span className="opacity-50">未选择</span>}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[12px] opacity-50 w-20 shrink-0">收藏收件箱</span>
+                <span className="text-[13px] truncate flex-1">{config?.inbox_database_title || config?.inbox_database_id || <span className="opacity-50">未选择</span>}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[12px] opacity-50 w-20 shrink-0">角色范围</span>
+                <span className="text-[13px] flex-1 flex items-center gap-1.5">
+                  {config?.character_scope === "character" ? (
+                    <> <Users size={13} className="opacity-60" /> 仅指定角色</>
+                  ) : (
+                    <> <Users size={13} className="opacity-60" /> 所有角色共享</>
+                  )}
+                </span>
+              </div>
+            </div>
+            {(!config?.todo_database_id || !config?.inbox_database_id) && (
+              <p className="mt-3 text-[12px] leading-5 text-amber-600 dark:text-amber-400">
+                ⚠️ 待办表或收件箱未配置，角色可能无法正常写入。请在下方选择或创建。
+              </p>
+            )}
           </section>
 
           <section className="app-card p-5">

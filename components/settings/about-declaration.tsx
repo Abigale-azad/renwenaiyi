@@ -1,10 +1,17 @@
 "use client";
 
 import { Info, ShieldAlert, Heart } from "lucide-react";
+import { PwaUpdateButton } from "./pwa-update-button";
 
 export function AboutDeclaration() {
     return (
         <div className="flex flex-col gap-5 h-full">
+            <p className="card-section-label m-0 mx-2">版本与更新</p>
+
+            <div className="flex flex-col gap-2">
+                <PwaUpdateButton />
+            </div>
+
             <p className="card-section-label m-0 mx-2">免责声明</p>
 
             <div className="g-card">

@@ -171,3 +171,8 @@ export async function saveChatFavorite(payload: {
 export async function listFlowusOperations(limit?: number) {
   return post<{ operations: FlowusOperation[] }>("list_operations", { limit });
 }
+
+/** 测试当前 FlowUs 连接是否正常，返回用户信息。 */
+export async function testFlowusConnection(): Promise<FlowusApiResponse<{ id: string; name: string }>> {
+  return post<{ id: string; name: string }>("get_me", {});
+}
