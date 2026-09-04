@@ -94,6 +94,17 @@ function describeNetworkError(err: unknown): { code: FlowusErrorCode; message: s
   return { code: "flowus_network", message };
 }
 
+// 把 FlowUs 官方的英文报错翻译成可执行的中文指引，避免用户对着天书排查。
+function translateUpstreamMessage(message: string): string {
+  if (/page-scoped integrations must provide an authorized page parent/i.test(message)) {
+    return "你的集成是「页面级」权限，无法在工作区根目录新建表。请打开 FlowUs「设置 → 集成」，改用「工作区级」集成（或重新创建一个工作区级集成），拿新 Token 回到本页重新连接。";
+  }
+  if (/^unauthorized$/i.test(message)) {
+    return "Token 无效或已过期，请到 FlowUs「设置 → 集成」重新生成 Token 后再连接。";
+  }
+  return message;
+}
+
 function mapHttpError(status: number, upstreamCode: string, message: string): FlowusErrorCode {
   if (status === 401) return "flowus_unauthorized";
   if (status === 403) return "flowus_forbidden";
@@ -158,8 +169,9 @@ export async function flowusApiFetch<T>(
 
     if (!response.ok) {
       const upstreamCode = typeof payload.code === "string" ? payload.code : "";
-      const message = typeof payload.message === "string" && payload.message ? payload.message : `FlowUs 错误（HTTP ${response.status}）。`;
-      const code = mapHttpError(response.status, upstreamCode, message);
+      const rawMessage = typeof payload.message === "string" && payload.message ? payload.message : `FlowUs 错误（HTTP ${response.status}）。`;
+      const message = translateUpstreamMessage(rawMessage);
+      const code = mapHttpError(response.status, upstreamCode, rawMessage);
       return { ok: false, code, message, requestId, upstreamCode };
     }
 
