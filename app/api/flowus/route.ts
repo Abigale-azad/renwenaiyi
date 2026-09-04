@@ -12,8 +12,12 @@ import {
 import {
   buildPropertyValue,
   makeDatabaseSchema,
+  makeMultiSelectProperty,
   makeParent,
+  makeRichTextProperty,
+  makeSelectProperty,
   makeTitleProperty,
+  makeUrlProperty,
   projectDatabase,
   projectPage,
   projectPageList,
@@ -240,7 +244,7 @@ export async function POST(request: NextRequest) {
         "pages",
         {
           parent: { database_id: databaseId },
-          properties: { Name: { title: [{ type: "text", text: { content: title } }] }, ...(properties ?? {}) },
+          properties: { Name: makeTitleProperty(title), ...(properties ?? {}) },
         },
         cookie,
         account.id,
@@ -363,11 +367,11 @@ export async function POST(request: NextRequest) {
       const statusField = config?.todo_status_field || "状态";
 
       const desired: Record<string, { type: FlowusPropertySchema["type"]; value: unknown }> = {
-        [titleField]: { type: "title", value: [{ type: "text", text: { content: title } }] },
+        [titleField]: { type: "title", value: makeTitleProperty(title) },
       };
-      desired[statusField] = { type: "select", value: { name: status } };
-      if (note) desired["备注"] = { type: "rich_text", value: [{ type: "text", text: { content: note } }] };
-      if (characterId) desired["来源角色"] = { type: "rich_text", value: [{ type: "text", text: { content: characterId } }] };
+      desired[statusField] = { type: "select", value: makeSelectProperty(status) };
+      if (note) desired["备注"] = { type: "rich_text", value: makeRichTextProperty(note) };
+      if (characterId) desired["来源角色"] = { type: "rich_text", value: makeRichTextProperty(characterId) };
 
       const properties = buildPropertiesFromSchema(schema, desired);
 
@@ -444,11 +448,11 @@ export async function POST(request: NextRequest) {
       const properties: Record<string, unknown> = {};
       const statusField = config?.todo_status_field || "状态";
       if (typeof completed === "boolean") {
-        properties[statusField] = { select: { name: completed ? (config?.todo_done_value || "完成") : "待办" } };
+        properties[statusField] = makeSelectProperty(completed ? (config?.todo_done_value || "完成") : "待办");
       } else if (status) {
-        properties[statusField] = { select: { name: status } };
+        properties[statusField] = makeSelectProperty(status);
       }
-      if (note) properties["备注"] = { rich_text: [{ type: "text", text: { content: note } }] };
+      if (note) properties["备注"] = makeRichTextProperty(note);
 
       const result = await flowusApiFetchWithAccount<FlowusPage>(
         "PATCH",
@@ -507,12 +511,12 @@ export async function POST(request: NextRequest) {
       const titleField = findTitlePropertyName(schema);
 
       const desired: Record<string, { type: FlowusPropertySchema["type"]; value: unknown }> = {
-        [titleField]: { type: "title", value: [{ type: "text", text: { content: title || content.slice(0, 60) } }] },
+        [titleField]: { type: "title", value: makeTitleProperty(title || content.slice(0, 60)) },
       };
-      if (content) desired["内容"] = { type: "rich_text", value: [{ type: "text", text: { content } }] };
-      if (tags.length) desired["标签"] = { type: "multi_select", value: tags.map((name) => ({ name })) };
-      if (characterId) desired["来源角色"] = { type: "rich_text", value: [{ type: "text", text: { content: characterId } }] };
-      if (url) desired["原文链接"] = { type: "url", value: url };
+      if (content) desired["内容"] = { type: "rich_text", value: makeRichTextProperty(content) };
+      if (tags.length) desired["标签"] = { type: "multi_select", value: makeMultiSelectProperty(tags) };
+      if (characterId) desired["来源角色"] = { type: "rich_text", value: makeRichTextProperty(characterId) };
+      if (url) desired["原文链接"] = { type: "url", value: makeUrlProperty(url) };
 
       const properties = buildPropertiesFromSchema(schema, desired);
       if (!properties[titleField]) {
