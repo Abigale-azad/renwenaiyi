@@ -1,9 +1,34 @@
 import type { FlowusConfig, FlowusOperation } from "./flowus-types";
 
+export type FlowusApiError = { code: string; message: string; requestId?: string };
+
 export interface FlowusApiResponse<T> {
   ok: boolean;
   data?: T;
-  error?: { code: string; message: string; requestId?: string };
+  error?: FlowusApiError;
+}
+
+/**
+ * 兼容两种错误返回格式：
+ * - 新格式：error: { code, message, requestId? }（/api/flowus action 接口）
+ * - 旧格式：error: "错误文字字符串"（/api/flowus/config 等 REST 接口）
+ */
+function normalizeError(raw: unknown): FlowusApiError {
+  if (typeof raw === "string") return { code: "unknown", message: raw };
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    const message = typeof obj.message === "string" && obj.message
+      ? obj.message
+      : typeof obj.error === "string" && obj.error
+        ? obj.error
+        : "请求失败";
+    return {
+      code: typeof obj.code === "string" ? obj.code : "unknown",
+      message,
+      requestId: typeof obj.requestId === "string" ? obj.requestId : undefined,
+    };
+  }
+  return { code: "unknown", message: "请求失败" };
 }
 
 async function post<T>(action: string, payload: Record<string, unknown> = {}): Promise<FlowusApiResponse<T>> {
@@ -12,8 +37,13 @@ async function post<T>(action: string, payload: Record<string, unknown> = {}): P
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, ...payload }),
   });
-  const json = await response.json().catch(() => ({ ok: false, error: { message: "无法解析响应" } }));
-  return json as FlowusApiResponse<T>;
+  const json = await response.json().catch(() => null);
+  if (!json || typeof json !== "object") {
+    return { ok: false, error: { code: "parse_error", message: "无法解析响应" } };
+  }
+  const obj = json as Record<string, unknown>;
+  if (obj.ok) return { ok: true, data: obj.data as T };
+  return { ok: false, error: normalizeError(obj.error) };
 }
 
 export async function getFlowusConfigClient(): Promise<FlowusApiResponse<{ connected: boolean; config: FlowusConfig | null }>> {
@@ -26,12 +56,24 @@ export async function connectFlowus(token: string): Promise<FlowusApiResponse<{ 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
   });
-  return response.json() as Promise<FlowusApiResponse<{ connected: boolean; config: FlowusConfig | null }>>;
+  const json = await response.json().catch(() => null);
+  if (!json || typeof json !== "object") {
+    return { ok: false, error: { code: "parse_error", message: "无法解析响应" } };
+  }
+  const obj = json as Record<string, unknown>;
+  if (obj.ok) return { ok: true, data: obj.data as { connected: boolean; config: FlowusConfig | null } };
+  return { ok: false, error: normalizeError(obj.error) };
 }
 
 export async function disconnectFlowus(): Promise<FlowusApiResponse<{ connected: boolean }>> {
   const response = await fetch("/api/flowus/config", { method: "DELETE" });
-  return response.json() as Promise<FlowusApiResponse<{ connected: boolean }>>;
+  const json = await response.json().catch(() => null);
+  if (!json || typeof json !== "object") {
+    return { ok: false, error: { code: "parse_error", message: "无法解析响应" } };
+  }
+  const obj = json as Record<string, unknown>;
+  if (obj.ok) return { ok: true, data: obj.data as { connected: boolean } };
+  return { ok: false, error: normalizeError(obj.error) };
 }
 
 export async function updateFlowusConfigClient(
@@ -42,7 +84,13 @@ export async function updateFlowusConfigClient(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ config }),
   });
-  return response.json() as Promise<FlowusApiResponse<{ config: FlowusConfig }>>;
+  const json = await response.json().catch(() => null);
+  if (!json || typeof json !== "object") {
+    return { ok: false, error: { code: "parse_error", message: "无法解析响应" } };
+  }
+  const obj = json as Record<string, unknown>;
+  if (obj.ok) return { ok: true, data: obj.data as { config: FlowusConfig } };
+  return { ok: false, error: normalizeError(obj.error) };
 }
 
 export async function searchFlowusDatabases(query: string): Promise<FlowusApiResponse<{ results: { id: string; title: string }[] }>> {
