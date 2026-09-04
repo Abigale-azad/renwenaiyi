@@ -172,6 +172,13 @@ export async function flowusApiFetch<T>(
       const rawMessage = typeof payload.message === "string" && payload.message ? payload.message : `FlowUs 错误（HTTP ${response.status}）。`;
       const message = translateUpstreamMessage(rawMessage);
       const code = mapHttpError(response.status, upstreamCode, rawMessage);
+      console.error("[flowus-gateway] upstream error:", {
+        path,
+        status: response.status,
+        upstreamCode,
+        rawMessage,
+        requestId,
+      });
       return { ok: false, code, message, requestId, upstreamCode };
     }
 
