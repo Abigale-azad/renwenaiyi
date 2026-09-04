@@ -50,7 +50,7 @@ export async function getFlowusConfig(accountId: string): Promise<FlowusConfig |
 export async function upsertFlowusConfig(
   accountId: string,
   config: Partial<FlowusConfig>,
-): Promise<FlowusConfig | null> {
+): Promise<{ ok: true; data: FlowusConfig } | { ok: false; error: string }> {
   const row: Partial<FlowusConfigRow> = {
     account_id: accountId,
     connected: config.connected ?? true,
@@ -77,9 +77,11 @@ export async function upsertFlowusConfig(
   );
   if (!result.ok) {
     console.error("[flowus-config-db] upsert config failed:", result.error);
-    return null;
+    return { ok: false, error: typeof result.error === "string" ? result.error : "保存配置失败" };
   }
-  return result.data[0] ? rowToConfig(result.data[0]) : null;
+  const saved = result.data[0] ? rowToConfig(result.data[0]) : null;
+  if (!saved) return { ok: false, error: "保存配置失败：未返回保存结果" };
+  return { ok: true, data: saved };
 }
 
 export async function deleteFlowusConfig(accountId: string): Promise<boolean> {

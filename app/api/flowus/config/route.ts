@@ -54,8 +54,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "服务端缺少凭据加密密钥，请检查部署环境变量。" }, { status: 503, headers: jsonHeaders });
   }
 
-  const config = await upsertFlowusConfig(account.id, { connected: true });
-  const response = NextResponse.json({ ok: true, connected: true, config }, { headers: jsonHeaders });
+  const configResult = await upsertFlowusConfig(account.id, { connected: true });
+  if (!configResult.ok) return NextResponse.json({ ok: false, error: configResult.error }, { status: 500, headers: jsonHeaders });
+  const response = NextResponse.json({ ok: true, connected: true, config: configResult.data }, { headers: jsonHeaders });
   response.cookies.set(FLOWUS_CREDENTIAL_COOKIE, sealed, {
     httpOnly: true,
     sameSite: "lax",
@@ -98,8 +99,9 @@ export async function PATCH(request: NextRequest) {
       : undefined,
   };
 
-  const config = await upsertFlowusConfig(account.id, update);
-  return NextResponse.json({ ok: true, config }, { headers: jsonHeaders });
+  const configResult = await upsertFlowusConfig(account.id, update);
+  if (!configResult.ok) return NextResponse.json({ ok: false, error: `保存配置失败：${configResult.error}` }, { status: 500, headers: jsonHeaders });
+  return NextResponse.json({ ok: true, config: configResult.data }, { headers: jsonHeaders });
 }
 
 export async function DELETE(request: NextRequest) {
