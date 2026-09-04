@@ -61,7 +61,8 @@ export async function connectFlowus(token: string): Promise<FlowusApiResponse<{ 
     return { ok: false, error: { code: "parse_error", message: "无法解析响应" } };
   }
   const obj = json as Record<string, unknown>;
-  if (obj.ok) return { ok: true, data: obj.data as { connected: boolean; config: FlowusConfig | null } };
+  // 服务端返回 { ok, connected, config }（顶层字段，不包 data）
+  if (obj.ok) return { ok: true, data: { connected: Boolean(obj.connected), config: (obj.config as FlowusConfig | null) ?? null } };
   return { ok: false, error: normalizeError(obj.error) };
 }
 
@@ -72,7 +73,7 @@ export async function disconnectFlowus(): Promise<FlowusApiResponse<{ connected:
     return { ok: false, error: { code: "parse_error", message: "无法解析响应" } };
   }
   const obj = json as Record<string, unknown>;
-  if (obj.ok) return { ok: true, data: obj.data as { connected: boolean } };
+  if (obj.ok) return { ok: true, data: { connected: Boolean(obj.connected) } };
   return { ok: false, error: normalizeError(obj.error) };
 }
 
@@ -89,7 +90,8 @@ export async function updateFlowusConfigClient(
     return { ok: false, error: { code: "parse_error", message: "无法解析响应" } };
   }
   const obj = json as Record<string, unknown>;
-  if (obj.ok) return { ok: true, data: obj.data as { config: FlowusConfig } };
+  // 服务端返回 { ok, config }（顶层字段，不包 data）
+  if (obj.ok) return { ok: true, data: { config: obj.config as FlowusConfig } };
   return { ok: false, error: normalizeError(obj.error) };
 }
 
