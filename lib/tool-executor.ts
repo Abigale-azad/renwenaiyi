@@ -25,7 +25,7 @@ import {
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
-import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, FLOWUS_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, FLOWUS_CAPABILITY_ID, GITHUB_SELF_AWARENESS_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
 import { loadMemoryEntriesByType, saveMemoryEntry } from "./memory-storage";
 import type { MemoryEntry } from "./memory-types";
 import { loadCharacters } from "./character-storage";
@@ -76,6 +76,7 @@ import { makeTimedWakeId, saveTimedWakeSchedule } from "./timed-wake-storage";
 import { resolveUserIdentity } from "./settings-storage";
 import { attachAbortSignal, isAbortError, throwIfAborted } from "./abort-utils";
 import { createFlowusTodo, queryFlowusTodo, saveChatFavorite, searchFlowus, updateFlowusTodo } from "./flowus-client";
+import { getQaGithubTree, readQaGithubFile, searchQaGithubCode, listQaGithubCommits, loadQaGithubConfig } from "./qa-github";
 
 // ── Types ─────────────────────────────────────
 
@@ -787,6 +788,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (call.name === "角色电脑") return executeAgentComputerTool(call, context);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
     if (isFlowusToolName(call.name)) return executeFlowusTool(call, context);
+    if (isGithubSelfAwarenessToolName(call.name)) return executeGithubSelfAwarenessTool(call, context);
 
     if (call.name !== "写入记忆") return null;
 
@@ -2886,6 +2888,95 @@ function isFlowusToolName(name: string): boolean {
         || name === "保存聊天资料"
         || name === "查询多维表"
         || name === "搜索资料";
+}
+
+function isGithubSelfAwarenessToolName(name: string): boolean {
+    return name === "查看项目结构"
+        || name === "读取源码文件"
+        || name === "搜索源码"
+        || name === "查看最近更新";
+}
+
+async function executeGithubSelfAwarenessTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const capability = getInternalCapability(GITHUB_SELF_AWARENESS_CAPABILITY_ID);
+    if (!capability || !capability.enabled || capability.mode === "off") {
+        return {
+            name: call.name,
+            success: false,
+            error: "源代码查阅能力未启用",
+            userNotice: "源代码查阅能力未启用",
+        };
+    }
+
+    const config = loadQaGithubConfig();
+    if (!config) {
+        return {
+            name: call.name,
+            success: false,
+            error: "GitHub 仓库未配置",
+            userNotice: "GitHub 仓库未配置",
+        };
+    }
+
+    try {
+        if (call.name === "查看项目结构") {
+            const path = cleanToolString(call.args.path, 500) || "";
+            const result = await getQaGithubTree(config, context?.signal);
+            let entries = result.entries;
+            if (path && path !== "/") {
+                const prefix = path.replace(/^\/+|\/+$/g, "") + "/";
+                entries = entries.filter(e => e.path.startsWith(prefix));
+            }
+            // 只返回前 100 条，避免输出过长
+            const truncated = entries.slice(0, 100);
+            const summary = entries.length > 100
+                ? `\n... 共 ${entries.length} 项，仅显示前 100 项。请缩小路径范围查看更多。`
+                : "";
+            const output = truncated.map(e => `${e.type === "tree" ? "[DIR]" : "    "} ${e.path}`).join("\n") + summary;
+            return { name: call.name, success: true, data: output, userNotice: "已获取项目结构" };
+        }
+
+        if (call.name === "读取源码文件") {
+            const path = cleanToolString(call.args.path, 500);
+            if (!path) throw new Error("缺少文件路径");
+            const result = await readQaGithubFile(config, path, context?.signal);
+            // 截断过长文件，避免 token 爆炸
+            const maxLines = 300;
+            const lines = result.text.split("\n");
+            const truncated = lines.length > maxLines;
+            const content = truncated ? lines.slice(0, maxLines).join("\n") + `\n\n... 文件共 ${lines.length} 行，已截断至前 ${maxLines} 行。` : result.text;
+            return { name: call.name, success: true, data: content, userNotice: `已读取 ${path}` };
+        }
+
+        if (call.name === "搜索源码") {
+            const query = cleanToolString(call.args.query, 200);
+            if (!query) throw new Error("缺少搜索关键词");
+            const result = await searchQaGithubCode(config, query, context?.signal);
+            const hits = result.hits.slice(0, 10);
+            const output = hits.map((h, i) => {
+                const preview = h.snippet?.trim() || "";
+                return `${i + 1}. ${h.path}\n   ${preview.slice(0, 200)}`;
+            }).join("\n\n");
+            const more = result.hits.length > 10 ? `\n\n共 ${result.hits.length} 个结果，仅显示前 10 个。` : "";
+            return { name: call.name, success: true, data: output + more, userNotice: `已搜索：${query}` };
+        }
+
+        if (call.name === "查看最近更新") {
+            const limitRaw = Number(call.args.limit);
+            const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(30, Math.floor(limitRaw))) : 10;
+            const commits = await listQaGithubCommits(config, { limit }, context?.signal);
+            const output = commits.map((c, i) => {
+                const date = c.date?.slice(0, 10) || "";
+                return `${i + 1}. [${date}] ${c.message?.split("\n")[0]?.slice(0, 100) || ""}\n   ${c.author || "未知作者"}`;
+            }).join("\n\n");
+            return { name: call.name, success: true, data: output, userNotice: "已获取最近更新" };
+        }
+
+        throw new Error("未知的源代码查阅动作");
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { name: call.name, success: false, error: message, userNotice: `源代码查阅失败：${message}` };
+    }
 }
 
 async function executeFlowusTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {

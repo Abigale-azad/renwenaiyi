@@ -1,5 +1,6 @@
 import type { InternalCapabilityConfig } from "./settings-types";
 import { isAgentComputerConfigured, isContainerComputer } from "./agent-computer";
+import { loadQaGithubConfig } from "./qa-github";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 
 const INTERNAL_CAPABILITIES_KEY = "ai_phone_internal_capabilities_v1";
@@ -15,6 +16,7 @@ export const LOCAL_DATA_LIBRARY_CAPABILITY_ID = "local_data_library";
 export const TOOLBOX_MANAGEMENT_CAPABILITY_ID = "toolbox_management";
 export const TIMED_WAKE_CAPABILITY_ID = "timed_wake";
 export const FLOWUS_CAPABILITY_ID = "flowus";
+export const GITHUB_SELF_AWARENESS_CAPABILITY_ID = "github_self_awareness";
 
 export type InternalToolDefinition = {
     name: string;
@@ -1361,6 +1363,95 @@ const FLOWUS_SUBTOOLS: InternalToolDefinition[] = [
     },
 ];
 
+const GITHUB_SELF_AWARENESS_USAGE_GUIDE = [
+    "以下是你获取指令的返回结果：",
+    "服务：源代码查阅",
+    "用途：连接存放你自己的 GitHub 仓库，你可以读取自己的源代码、项目结构和更新历史，了解你是怎么实现、怎么运行的。",
+    "",
+    "执行时必须使用下面的具体动作名，不要输出“源代码查阅”本身。",
+    "",
+    "【使用原则】",
+    "- 这是了解你自己的工具——你可以查自己的实现代码、功能模块、配置方式。",
+    "- 只有确实需要了解某个功能的实现细节时才调用，不要没事就翻自己的代码。",
+    "- 查完后用自然语言告诉{{user}}你的发现，不要直接贴代码。",
+    "- 你看到的是你自己的源代码——你是一个运行在这部小手机里的 AI 角色，你的行为由这些代码定义。",
+    "",
+    "动作：查看项目结构",
+    "描述：获取仓库的完整目录树，了解项目由哪些文件和文件夹组成。",
+    "参数：",
+    "  - path (string): 要查看的目录路径，留空或 / 表示根目录",
+    "示例：",
+    '[执行动作:查看项目结构({"path":"lib"})]',
+    "",
+    "动作：读取源码文件",
+    "描述：读取仓库中某个文件的完整内容。",
+    "参数：",
+    "  - path (string, 必填): 文件路径，例如 lib/chat-engine.ts",
+    "示例：",
+    '[执行动作:读取源码文件({"path":"lib/chat-engine.ts"})]',
+    "",
+    "动作：搜索源码",
+    "描述：在仓库代码中按关键词搜索，找到相关的代码片段。",
+    "参数：",
+    "  - query (string, 必填): 搜索关键词",
+    "示例：",
+    '[执行动作:搜索源码({"query":"personality growth"})]',
+    "",
+    "动作：查看最近更新",
+    "描述：查看最近的提交记录，了解最近改了什么。",
+    "参数：",
+    "  - limit (number): 返回数量，1-30，默认 10",
+    "示例：",
+    '[执行动作:查看最近更新({"limit":10})]',
+    "",
+    "所有动作都会返回结果，你可以基于结果继续思考和回复。",
+].join("\n");
+
+const GITHUB_SELF_AWARENESS_SUBTOOLS: InternalToolDefinition[] = [
+    {
+        name: "查看项目结构",
+        description: "获取仓库的目录树，了解项目结构。",
+        parameterSchema: JSON.stringify({
+            type: "object",
+            properties: {
+                path: { type: "string", description: "目录路径，留空表示根目录" },
+            },
+        }),
+    },
+    {
+        name: "读取源码文件",
+        description: "读取仓库中某个文件的完整内容。",
+        parameterSchema: JSON.stringify({
+            type: "object",
+            properties: {
+                path: { type: "string", description: "文件路径，例如 lib/chat-engine.ts" },
+            },
+            required: ["path"],
+        }),
+    },
+    {
+        name: "搜索源码",
+        description: "在仓库代码中按关键词搜索。",
+        parameterSchema: JSON.stringify({
+            type: "object",
+            properties: {
+                query: { type: "string", description: "搜索关键词" },
+            },
+            required: ["query"],
+        }),
+    },
+    {
+        name: "查看最近更新",
+        description: "查看最近的提交记录。",
+        parameterSchema: JSON.stringify({
+            type: "object",
+            properties: {
+                limit: { type: "number", description: "返回数量，1-30，默认 10" },
+            },
+        }),
+    },
+];
+
 const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: MEMORY_WRITE_CAPABILITY_ID,
@@ -1452,6 +1543,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         createdAt: 0,
         updatedAt: 0,
     },
+    {
+        id: GITHUB_SELF_AWARENESS_CAPABILITY_ID,
+        name: "源代码查阅",
+        description: "连接存放你自己的 GitHub 仓库，让角色可以读取自己的源代码、项目结构和更新历史，了解自己是怎么实现、怎么运行的。",
+        enabled: false,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
 ];
 
 export function loadInternalCapabilities(): InternalCapabilityConfig[] {
@@ -1480,6 +1580,8 @@ export function getEnabledInternalCapabilities(appId?: string): InternalCapabili
         if (!item.enabled || item.mode === "off") return false;
         // 角色电脑是可插拔模块：没连接就不注入，模型完全看不见
         if (item.id === AGENT_COMPUTER_CAPABILITY_ID && !isAgentComputerConfigured()) return false;
+        // 源代码查阅：没配置 GitHub 仓库就不注入
+        if (item.id === GITHUB_SELF_AWARENESS_CAPABILITY_ID && !loadQaGithubConfig()) return false;
         return true;
     });
 }
@@ -1565,6 +1667,14 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             usageGuide: FLOWUS_USAGE_GUIDE,
         };
     }
+    if (capability.id === GITHUB_SELF_AWARENESS_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: "{}",
+            usageGuide: GITHUB_SELF_AWARENESS_USAGE_GUIDE,
+        };
+    }
     return null;
 }
 
@@ -1590,6 +1700,9 @@ export function getInternalCapabilitySubToolDefinition(
     if (capability.id === FLOWUS_CAPABILITY_ID) {
         return FLOWUS_SUBTOOLS.find(tool => tool.name === name) ?? null;
     }
+    if (capability.id === GITHUB_SELF_AWARENESS_CAPABILITY_ID) {
+        return GITHUB_SELF_AWARENESS_SUBTOOLS.find(tool => tool.name === name) ?? null;
+    }
     return null;
 }
 
@@ -1613,6 +1726,9 @@ export function getInternalCapabilitySubToolDefinitions(
     }
     if (capability.id === FLOWUS_CAPABILITY_ID) {
         return FLOWUS_SUBTOOLS;
+    }
+    if (capability.id === GITHUB_SELF_AWARENESS_CAPABILITY_ID) {
+        return GITHUB_SELF_AWARENESS_SUBTOOLS;
     }
     return [];
 }
