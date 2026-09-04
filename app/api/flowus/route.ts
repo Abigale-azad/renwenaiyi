@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
         "pages",
         {
           parent: { database_id: databaseId },
-          properties: { Name: { title: richTextFromString(title) }, ...(properties ?? {}) },
+          properties: { Name: { title: [{ type: "text", text: { content: title } }] }, ...(properties ?? {}) },
         },
         cookie,
         account.id,
@@ -328,11 +328,11 @@ export async function POST(request: NextRequest) {
 
       const statusField = config?.todo_status_field || "状态";
       const properties: Record<string, unknown> = {
-        Name: { title: richTextFromString(title) },
+        Name: { title: [{ type: "text", text: { content: title } }] },
         [statusField]: { select: { name: status } },
       };
-      if (note) properties["备注"] = { rich_text: richTextFromString(note) };
-      if (characterId) properties["来源角色"] = { rich_text: richTextFromString(characterId) };
+      if (note) properties["备注"] = { rich_text: [{ type: "text", text: { content: note } }] };
+      if (characterId) properties["来源角色"] = { rich_text: [{ type: "text", text: { content: characterId } }] };
 
       const op = await createFlowusOperation(account.id, {
         character_id: characterId,
@@ -396,7 +396,7 @@ export async function POST(request: NextRequest) {
       } else if (status) {
         properties[statusField] = { select: { name: status } };
       }
-      if (note) properties["备注"] = { rich_text: richTextFromString(note) };
+      if (note) properties["备注"] = { rich_text: [{ type: "text", text: { content: note } }] };
 
       const result = await flowusApiFetchWithAccount<FlowusPage>(
         "PATCH",
@@ -450,11 +450,11 @@ export async function POST(request: NextRequest) {
       if (!title && !content) return badRequest("至少需要 title 或 content。");
 
       const properties: Record<string, unknown> = {
-        Name: { title: richTextFromString(title || content.slice(0, 60)) },
-        内容: { rich_text: richTextFromString(content) },
+        Name: { title: [{ type: "text", text: { content: title || content.slice(0, 60) } }] },
+        内容: { rich_text: [{ type: "text", text: { content: content } }] },
         标签: { multi_select: tags.map((name) => ({ name })) },
       };
-      if (characterId) properties["来源角色"] = { rich_text: richTextFromString(characterId) };
+      if (characterId) properties["来源角色"] = { rich_text: [{ type: "text", text: { content: characterId } }] };
       if (url) properties["原文链接"] = { url };
 
       const op = await createFlowusOperation(account.id, {
