@@ -31,26 +31,23 @@ export const runtime = "nodejs";
 /**
  * 根据数据库 schema 动态构建写入用的 properties 对象。
  * 只写入表中实际存在且类型匹配的字段，避免触发 Invalid database page properties。
+ * 写入时用 schema 的原始 key（属性 id）作为 properties 的键。
  */
 function buildPropertiesFromSchema(
   schema: Record<string, FlowusPropertySchema>,
   desired: Record<string, { type: FlowusPropertySchema["type"]; value: unknown }>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  const byName = new Map<string, FlowusPropertySchema>();
   for (const [key, prop] of Object.entries(schema)) {
     const name = prop.name ?? key;
-    byName.set(name, prop);
-  }
-  for (const [name, spec] of Object.entries(desired)) {
-    const prop = byName.get(name);
-    if (!prop || prop.type !== spec.type) continue;
-    result[name] = spec.value;
+    const spec = desired[name];
+    if (!spec || prop.type !== spec.type) continue;
+    result[key] = spec.value;
   }
   return result;
 }
 
-/** 在 schema 中找到 type=title 的属性名（通常叫 Name，但也可能是其他名字） */
+/** 在 schema 中找到 type=title 的属性名（显示名，用于匹配 desired 中的 key） */
 function findTitlePropertyName(schema: Record<string, FlowusPropertySchema>): string {
   for (const [key, prop] of Object.entries(schema)) {
     if (prop.type === "title") return prop.name ?? key;
@@ -376,7 +373,8 @@ export async function POST(request: NextRequest) {
       const properties = buildPropertiesFromSchema(schema, desired);
 
       // 至少得有标题字段，否则写不了
-      if (!properties[titleField]) {
+      const hasTitle = Object.values(schema).some((p) => p.type === "title");
+      if (!hasTitle) {
         return badRequest("待办多维表中未找到标题字段，请检查表结构。");
       }
 
@@ -519,7 +517,8 @@ export async function POST(request: NextRequest) {
       if (url) desired["原文链接"] = { type: "url", value: makeUrlProperty(url) };
 
       const properties = buildPropertiesFromSchema(schema, desired);
-      if (!properties[titleField]) {
+      const hasTitle = Object.values(schema).some((p) => p.type === "title");
+      if (!hasTitle) {
         return badRequest("收件箱多维表中未找到标题字段，请检查表结构。");
       }
 
