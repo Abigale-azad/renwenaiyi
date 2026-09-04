@@ -163,10 +163,24 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
     }
   }
 
-  function pickParentPage(id: string, title: string) {
-    setConfig((prev) => prev ? { ...prev, parent_page_id: id, parent_page_title: title } : prev);
+  async function pickParentPage(id: string, title: string) {
+    const next: FlowusConfig = {
+      ...(config ?? { connected: true, character_scope: "account" }),
+      parent_page_id: id,
+      parent_page_title: title || id,
+    };
+    setConfig(next);
     setPageOptions([]);
     setPageQuery("");
+    // 立即持久化到服务端，避免刷新丢失
+    try {
+      const payload = await updateFlowusConfigClient(next);
+      if (!payload.ok || !payload.data) throw new Error(payload.error?.message || "保存失败。");
+      setConfig(payload.data.config);
+      onNotice(`已设置父页面：${title || id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存父页面失败。");
+    }
   }
 
   // 从 FlowUs 页面链接或纯 ID 中解析页面 ID，支持带横线或不带横线的 UUID
@@ -188,9 +202,8 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
     try {
       const payload = await getFlowusPage(pageId);
       if (!payload.ok || !payload.data) throw new Error(payload.error?.message || "无法访问该页面。");
-      pickParentPage(payload.data.id, payload.data.title);
+      await pickParentPage(payload.data.id, payload.data.title);
       setPageLinkInput("");
-      onNotice(`已设置父页面：${payload.data.title || payload.data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法访问该页面。请确认它已授权给当前集成。");
     } finally {
