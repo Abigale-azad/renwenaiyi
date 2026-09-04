@@ -176,10 +176,26 @@ export function buildPropertyValue(
   return undefined;
 }
 
-export function makeDatabaseSchema(fields: { name: string; type: FlowusPropertySchema["type"] }[]): Record<string, FlowusPropertySchema> {
+export function makeDatabaseSchema(
+  fields: (
+    | { name: string; type: FlowusPropertySchema["type"] }
+    | { name: string; type: "select"; options?: { name: string; color?: string }[] }
+    | { name: string; type: "multi_select"; options?: { name: string; color?: string }[] }
+  )[],
+): Record<string, FlowusPropertySchema> {
   const schema: Record<string, FlowusPropertySchema> = {};
   for (const field of fields) {
-    schema[field.name] = { name: field.name, type: field.type } as FlowusPropertySchema;
+    const base = { name: field.name, type: field.type } as FlowusPropertySchema;
+    if (field.type === "select") {
+      (base as Extract<FlowusPropertySchema, { type: "select" }>).select = {
+        options: ("options" in field && field.options) || [],
+      };
+    } else if (field.type === "multi_select") {
+      (base as Extract<FlowusPropertySchema, { type: "multi_select" }>).multi_select = {
+        options: ("options" in field && field.options) || [],
+      };
+    }
+    schema[field.name] = base;
   }
   return schema;
 }

@@ -271,7 +271,11 @@ export async function POST(request: NextRequest) {
           title: [{ type: "text", text: { content: title } }],
           properties: makeDatabaseSchema([
             { name: "Name", type: "title" },
-            { name: "状态", type: "select" },
+            { name: "状态", type: "select", options: [
+              { name: "待办", color: "yellow" },
+              { name: "进行中", color: "blue" },
+              { name: "完成", color: "green" },
+            ]},
             { name: "来源角色", type: "rich_text" },
             { name: "备注", type: "rich_text" },
           ]),
@@ -296,7 +300,7 @@ export async function POST(request: NextRequest) {
             { name: "Name", type: "title" },
             { name: "内容", type: "rich_text" },
             { name: "来源角色", type: "rich_text" },
-            { name: "标签", type: "multi_select" },
+            { name: "标签", type: "multi_select", options: [] },
             { name: "原文链接", type: "url" },
           ]),
         },
