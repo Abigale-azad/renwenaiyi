@@ -123,6 +123,20 @@ export async function POST(request: NextRequest) {
       return ok({ results: databases.map(projectDatabase) });
     }
 
+    if (action === "search_pages") {
+      const query = safeString(body.query) || "";
+      const result = await flowusApiFetchWithAccount<FlowusList<FlowusPage | FlowusDatabase>>(
+        "POST",
+        "search",
+        { query, filter: { value: "page", property: "object" }, page_size: 20 },
+        cookie,
+        account.id,
+      );
+      if (!result.ok) return fail(result.code, result.message, result.requestId);
+      const pages = (result.data.results ?? []).filter((r): r is FlowusPage => "object" in r && r.object === "page");
+      return ok({ results: pages.map((p) => ({ id: p.id, title: projectPage(p).title })) });
+    }
+
     if (action === "get_database") {
       const databaseId = safeString(body.databaseId);
       if (!databaseId) return badRequest("缺少 databaseId。");

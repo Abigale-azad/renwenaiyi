@@ -97,6 +97,10 @@ export async function searchFlowusDatabases(query: string): Promise<FlowusApiRes
   return post("search_databases", { query });
 }
 
+export async function searchFlowusPages(query: string): Promise<FlowusApiResponse<{ results: { id: string; title: string }[] }>> {
+  return post("search_pages", { query });
+}
+
 export async function getFlowusDatabase(databaseId: string): Promise<FlowusApiResponse<{ id: string; title: string; properties: { id: string; name: string; type: string; options?: { name: string; color?: string }[] }[] }>> {
   return post("get_database", { databaseId });
 }

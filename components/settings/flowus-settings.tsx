@@ -14,6 +14,7 @@ import {
   RefreshCw,
   User,
   Users,
+  FolderOpen,
 } from "lucide-react";
 
 import type { FlowusConfig } from "@/lib/flowus-types";
@@ -24,6 +25,7 @@ import {
   disconnectFlowus,
   getFlowusConfigClient,
   searchFlowusDatabases,
+  searchFlowusPages,
   updateFlowusConfigClient,
   testFlowusConnection,
 } from "@/lib/flowus-client";
@@ -42,6 +44,9 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
   const [query, setQuery] = useState("");
   const [dbOptions, setDbOptions] = useState<DatabaseOption[]>([]);
   const [searching, setSearching] = useState(false);
+  const [pageQuery, setPageQuery] = useState("");
+  const [pageOptions, setPageOptions] = useState<DatabaseOption[]>([]);
+  const [searchingPages, setSearchingPages] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [userInfo, setUserInfo] = useState<{ id: string; name: string } | null>(null);
@@ -132,6 +137,21 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
       setError(err instanceof Error ? err.message : "搜索失败。");
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function searchPages() {
+    if (searchingPages) return;
+    setSearchingPages(true);
+    setError("");
+    try {
+      const payload = await searchFlowusPages(pageQuery.trim() || "");
+      if (!payload.ok || !payload.data) throw new Error(payload.error?.message || "搜索失败。");
+      setPageOptions(payload.data.results);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "搜索失败。");
+    } finally {
+      setSearchingPages(false);
     }
   }
 
@@ -260,6 +280,10 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
                 <span className="text-[13px] truncate flex-1">{userInfo?.name || userInfo?.id || "—"}</span>
               </div>
               <div className="flex items-center gap-3">
+                <span className="text-[12px] opacity-50 w-20 shrink-0">父页面</span>
+                <span className="text-[13px] truncate flex-1">{config?.parent_page_title || config?.parent_page_id || <span className="opacity-50">根目录</span>}</span>
+              </div>
+              <div className="flex items-center gap-3">
                 <span className="text-[12px] opacity-50 w-20 shrink-0">待办多维表</span>
                 <span className="text-[13px] truncate flex-1">{config?.todo_database_title || config?.todo_database_id || <span className="opacity-50">未选择</span>}</span>
               </div>
@@ -283,6 +307,41 @@ export function FlowusSettings({ onNotice }: { onNotice: (message: string) => vo
                 ⚠️ 待办表或收件箱未配置，角色可能无法正常写入。请在下方选择或创建。
               </p>
             )}
+          </section>
+
+          <section className="app-card p-5">
+            <h3 className="font-semibold flex items-center gap-2"><FolderOpen size={18} />父页面</h3>
+            <p className="mt-1 text-[13px] leading-5 opacity-60">新建的待办表和收件箱会放在这个页面下面。页面级集成必须选择一个已授权的页面作为父级。</p>
+
+            <div className="mt-4 flex gap-2">
+              <input className="ui-input flex-1" placeholder="搜索 FlowUs 页面" value={pageQuery} onChange={(e) => setPageQuery(e.target.value)} />
+              <button type="button" className="ui-btn ui-btn-secondary shrink-0" onClick={() => void searchPages()} disabled={searchingPages}><Search size={16} />{searchingPages ? "搜索中" : "搜索"}</button>
+            </div>
+
+            {pageOptions.length > 0 && (
+              <div className="mt-3 max-h-48 overflow-auto rounded-2xl border border-black/5">
+                {pageOptions.map((page) => (
+                  <div key={page.id} className="flex items-center justify-between border-b border-black/5 px-3 py-2 last:border-0">
+                    <span className="truncate text-[13px]">{page.title || "未命名页面"}</span>
+                    <button type="button" className="text-[12px] text-violet-500" onClick={() => {
+                      setConfig((prev) => prev ? { ...prev, parent_page_id: page.id, parent_page_title: page.title } : prev);
+                      setPageOptions([]);
+                      setPageQuery("");
+                    }}>设为父页面</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-4 rounded-2xl bg-black/[0.02] px-3 py-2">
+              <div className="text-[12px] opacity-60">当前父页面</div>
+              <div className="flex items-center justify-between">
+                <div className="text-[13px] font-medium">{config?.parent_page_title || config?.parent_page_id || "未选择（默认工作区根目录）"}</div>
+                {config?.parent_page_id && (
+                  <button type="button" className="text-[12px] text-red-500" onClick={() => setConfig((prev) => prev ? { ...prev, parent_page_id: undefined, parent_page_title: undefined } : prev)}>清除</button>
+                )}
+              </div>
+            </div>
           </section>
 
           <section className="app-card p-5">
