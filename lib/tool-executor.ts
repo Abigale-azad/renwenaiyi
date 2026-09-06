@@ -4626,5 +4626,5 @@ export function formatToolResults(results: ToolResult[]): string {
         }
         return `<action_result name="${r.name}" error="${r.error || "未知错误"}"></action_result>`;
     }).join("\n");
-    return `以下是系统处理结果：\n${items}\n请基于以上结果，继续以角色身份回复用户。不要重复你之前已经说过的内容，不要再次执行相同的动作。`;
+    return `以下是系统处理结果：\n${items}\n请基于以上结果继续以角色身份回复。只有 success 且 action_result 含有实际结果的动作，才能表述为已完成；失败、部分完成或结果不明确时必须如实说明。不要重复你之前说过的内容，不要再次执行相同动作，也不要编造结果中不存在的文件、记录、时间、地点或后续行为。`;
 }
