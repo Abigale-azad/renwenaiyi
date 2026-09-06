@@ -49,6 +49,7 @@ import { ConfirmDialog } from "@/components/ui/modal";
 import { CHAT_SESSION_CSS_EXAMPLE } from "@/lib/css-examples";
 import { Toggle, Input } from "@/components/ui/form";
 import { PageShell } from "@/components/ui/page-shell";
+import { deleteWeixinCloudMessagesFromCloud } from "@/lib/weixin-cloud-sync";
 
 // 自定义状态栏预填模板：微博主页（契约=「状态栏」章节整段正文，含【逻辑】【格式】与包裹要求）
 const STATUS_REGION_STARTER_CONTRACT = [
@@ -377,7 +378,8 @@ export function ChatSettingsPanel({
         return (latest as Record<string, unknown>)?.customCSS as string || session.customCSS || "";
     });
 
-    const [showConfirmClear, setShowConfirmClear] = useState(false);
+    const [clearHistoryBusy, setClearHistoryBusy] = useState(false);
+    const [clearHistoryError, setClearHistoryError] = useState("");
     const [showConfirmClearOffline, setShowConfirmClearOffline] = useState(false);
     const [showConfirmClearTools, setShowConfirmClearTools] = useState(false);
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
@@ -598,12 +600,31 @@ export function ChatSettingsPanel({
         }
     };
 
-    const handleClearHistory = () => {
-        clearChatSessionMessages(session.id);
-        setShowConfirmClear(false);
-        // Close the settings layer so ChatRoom immediately reloads the now-empty store.
-        // Keeping the panel mounted made the action look unresponsive on mobile.
-        onClose();
+    const handleClearHistory = async () => {
+        if (clearHistoryBusy) return;
+        const confirmed = window.confirm("确定清空这段线上聊天记录？\n\n不会影响线下模式记录，删除后无法恢复。");
+        if (!confirmed) return;
+        setClearHistoryBusy(true);
+        setClearHistoryError("");
+        const targetMessages = loadChatMessages(session.id);
+        try {
+            // Delete remote copies first, otherwise cloud polling can restore what was just cleared locally.
+            let cloudWarning = "";
+            try {
+                await deleteWeixinCloudMessagesFromCloud(targetMessages);
+            } catch (error) {
+                cloudWarning = error instanceof Error ? error.message : String(error);
+            }
+            clearChatSessionMessages(session.id);
+            if (loadChatMessages(session.id).some(message => message.sessionId === session.id)) {
+                throw new Error("本地记录未能完全清除，请重新打开后再试。");
+            }
+            if (cloudWarning) window.alert(`本机聊天已清空，但云端副本删除失败：${cloudWarning}`);
+            onClose();
+        } catch (error) {
+            setClearHistoryError(error instanceof Error ? error.message : String(error));
+            setClearHistoryBusy(false);
+        }
     };
 
     const handleClearOfflineHistory = () => {
@@ -1161,14 +1182,10 @@ export function ChatSettingsPanel({
                             <span className="menu-desc">切换到文本协议 API 前使用</span>
                         </div>
                     </button>
-                    {!showConfirmClear ? <button className="menu-item" onClick={() => setShowConfirmClear(true)}>
+                    <button className="menu-item" disabled={clearHistoryBusy} onClick={() => void handleClearHistory()} style={clearHistoryBusy ? { opacity: .55 } : undefined}>
                         <ChatInfoIcon icon={Trash2} color="var(--c-danger)" />
-                        <div className="menu-label-group"><span className="menu-label menu-label-danger">清空线上聊天记录</span><span className="menu-desc">不影响线下模式记录</span></div>
-                    </button> : <div className="menu-item" role="group" aria-label="确认清空线上聊天记录">
-                        <ChatInfoIcon icon={AlertCircle} color="var(--c-danger)" />
-                        <div className="menu-label-group"><span className="menu-label menu-label-danger">确认清空？</span><span className="menu-desc">删除后无法恢复</span></div>
-                        <div className="menu-right gap-2"><button type="button" className="ui-btn ui-btn-ghost !min-w-0 !px-3" onClick={() => setShowConfirmClear(false)}>取消</button><button type="button" className="ui-btn ui-btn-danger !min-w-0 !px-3" onClick={handleClearHistory}>清空</button></div>
-                    </div>}
+                        <div className="menu-label-group"><span className="menu-label menu-label-danger">{clearHistoryBusy ? "正在清空…" : "清空线上聊天记录"}</span><span className="menu-desc">同时删除可识别的云端副本，不影响线下模式记录</span>{clearHistoryError && <span className="menu-desc" style={{ color: "var(--c-danger)" }}>{clearHistoryError}</span>}</div>
+                    </button>
                     <button
                         className="menu-item"
                         disabled={offlineHistoryBusy}

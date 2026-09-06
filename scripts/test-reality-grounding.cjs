@@ -36,8 +36,9 @@ assert.ok(migration.includes('不得发明'), 'card migration must forbid invent
 assert.ok(migration.includes('backupCharacterVersion'), 'card migration must create a version backup before applying');
 assert.ok(migration.includes('undoCharacterSplit'), 'card migration must be reversible');
 const chatSettings = fs.readFileSync(path.join(root, 'components/chat/chat-settings-panel.tsx'), 'utf8');
-assert.ok(chatSettings.includes('onClose();'), 'clearing online history must close the settings layer and refresh chat');
-assert.ok(chatSettings.includes('aria-label="确认清空线上聊天记录"'), 'online clear action must use an inline mobile-safe confirmation');
+assert.ok(chatSettings.includes('window.confirm("确定清空这段线上聊天记录'), 'online clear action must use a direct mobile-safe confirmation');
+assert.ok(chatSettings.includes('await deleteWeixinCloudMessagesFromCloud(targetMessages)'), 'remote copies must be removed before local chat is cleared');
+assert.ok(chatSettings.includes('loadChatMessages(session.id).some'), 'clear action must verify the session is empty before closing');
 assert.ok(executor.includes('只有 success 且 action_result 含有实际结果的动作'));
 assert.ok(executor.includes('不要编造结果中不存在的文件'));
 assert.ok(casting.includes('view === "cards" || view === "prompts" ? "setup" : "cards"'), 'candidate back button must return to setup');
