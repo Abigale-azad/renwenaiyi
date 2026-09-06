@@ -34,7 +34,7 @@ export async function retrieveMemoriesForPrompt(
     currentContext: string,
     config: MemoryConfig
 ): Promise<MemoryEntry[]> {
-    const longTermEntries = await loadMemoryEntriesByType(characterId, "long_term");
+    const longTermEntries = (await loadMemoryEntriesByType(characterId, "long_term")).filter(entry => entry.metadata?.disabled !== true);
     if (longTermEntries.length === 0 || !currentContext.trim()) return [];
 
     const budget = config.longTermTokenBudget;
@@ -78,7 +78,7 @@ export async function retrieveCoreMemoriesForPrompt(
     characterId: string,
     config: MemoryConfig,
 ): Promise<MemoryEntry[]> {
-    const coreEntries = await loadMemoryEntriesByType(characterId, "core");
+    const coreEntries = (await loadMemoryEntriesByType(characterId, "core")).filter(entry => entry.metadata?.disabled !== true);
     if (coreEntries.length === 0) return [];
 
     const sorted = [...coreEntries].sort((a, b) => {

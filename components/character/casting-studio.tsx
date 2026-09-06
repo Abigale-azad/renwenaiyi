@@ -4,10 +4,11 @@ import { useState } from "react";
 import { addChatContact, createOrGetSession } from "@/lib/chat-storage";
 import { createCharacter, loadCharacters, saveCharacters } from "@/lib/character-storage";
 import { createCharacterWorldGroup, moveCharacterToWorld, updateCharacterWorldDescription, type CharacterWorldGroup } from "@/lib/character-world-storage";
-import { CASTING_SECTION_LABELS, DEFAULT_AUDITION_PROMPT, DEFAULT_CASTING_PROMPT, composePersona, generateCastingCandidates, generateInspirationTags, generateSpicySamples, loadAuditionPrompt, loadCastingBatch, loadCastingPrompt, saveAuditionPrompt, saveCastingBatch, saveCastingPrompt, type CastingBatch, type CastingCandidate, type CastingProfile, type CastingSections } from "@/lib/casting-studio";
+import { CASTING_SECTION_LABELS, DEFAULT_AUDITION_PROMPT, DEFAULT_CASTING_PROMPT, composeCorePersona, composeIntimacyProfile, composePersona, generateCastingCandidates, generateInspirationTags, generateSpicySamples, loadAuditionPrompt, loadCastingBatch, loadCastingPrompt, saveAuditionPrompt, saveCastingBatch, saveCastingPrompt, type CastingBatch, type CastingCandidate, type CastingProfile, type CastingSections } from "@/lib/casting-studio";
 import { ChevronLeft, FileText, Loader2, Pencil, RefreshCw, Settings2, Sparkles, UserPlus, X } from "lucide-react";
 import { kvSet } from "@/lib/kv-db";
 import { getCharacterBinding, loadBindingConfig, loadWorldBooks, saveBindingConfig, setCharacterBinding } from "@/lib/settings-storage";
+import { loadCharacterRelationship, saveCharacterRelationship } from "@/lib/character-relationship-storage";
 
 const initialProfile: CastingProfile = {
   identity: "", internetPersona: "", temperament: "", contrast: "", tension: "", controlStyle: "",
@@ -59,9 +60,20 @@ export function CastingStudio({ worldGroups, initialWorldId, onClose, onSaved, o
     if (!candidate) return null;
     if (candidate.savedCharacterId) return loadCharacters().find(item => item.id === candidate.savedCharacterId) || null;
     const all = loadCharacters();
-    const char = createCharacter({ name: candidate.name, avatar: null, persona: composePersona(candidate.sections), personality: candidate.personality, briefPersona: candidate.briefPersona, briefPersonaUpdatedAt: new Date().toISOString(), tags: ["妃卡", ...candidate.keywords] });
+    const char = createCharacter({ name: candidate.name, avatar: null, persona: composeCorePersona(candidate.sections), personality: candidate.personality, briefPersona: candidate.briefPersona, briefPersonaUpdatedAt: new Date().toISOString(), tags: ["妃卡", ...candidate.keywords] });
     char.canvasX = 180 + Math.random() * 100; char.canvasY = 160 + Math.random() * 120; char.canvasRot = Math.round(Math.random() * 8 - 4); char.canvasZIndex = Math.max(100, ...all.map((item) => item.canvasZIndex || 0)) + 1;
     saveCharacters([...all, char]);
+    const relationship = loadCharacterRelationship(char.id);
+    saveCharacterRelationship(char.id, {
+      ...relationship,
+      relationshipStage: "new",
+      confirmedRealityFacts: "",
+      relationshipBoundaries: candidate.sections.relationship.trim(),
+      intimacyProfile: composeIntimacyProfile(candidate.sections),
+      scenarioProfile: [profile.worldContext, candidate.sections.worldview].filter(Boolean).join("\n\n"),
+      currentMode: "reality",
+      updatedAt: Date.now(),
+    });
     let targetWorldId = worldId;
     if (newWorldName.trim()) { const existing = worldGroups.find(item => item.name.trim() === newWorldName.trim()); const group = existing || createCharacterWorldGroup(newWorldName.trim()); targetWorldId = group.id; if (!existing && profile.worldContext.trim()) updateCharacterWorldDescription(group.id, profile.worldContext.trim()); }
     moveCharacterToWorld(char.id, targetWorldId); if (forceContact) addChatContact(char.id);

@@ -1,25 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Brain, MoreHorizontal, Sparkles } from "lucide-react";
+import { MoreHorizontal, Sparkles } from "lucide-react";
 import { MemoryBankPage } from "./memory/memory-bank-page";
 import { VnAssetPage } from "./vn/vn-asset-page";
 import { loadCharacters } from "@/lib/character-storage";
 import { PageShell } from "./ui/page-shell";
 import { FeaturedCard, type FeaturedCardItem } from "./ui/card-grid";
-import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
+import { CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
 
 export type ResourceSubPage = "main" | "memory" | "vn_assets";
 type MemoryView = "list" | "detail" | "settings";
 
 const RESOURCE_MENU: Omit<FeaturedCardItem, "onClick">[] = [
-    {
-        id: "memory",
-        icon: Brain,
-        label: "记忆库",
-        desc: "角色记忆档案",
-        iconColor: BINDING_ACCENTS.memory,
-    },
     {
         id: "vn_assets",
         icon: Sparkles,
@@ -111,7 +104,7 @@ export function PhoneResourcesApp({ onClose, onNotice, initialPage }: { onClose:
                                         key={item.id}
                                         item={{
                                             ...item,
-                                            onClick: () => setCurrentPage(item.id === "vn_assets" ? "vn_assets" : "memory"),
+                                            onClick: () => setCurrentPage("vn_assets"),
                                         }}
                                     />
                                 ))}

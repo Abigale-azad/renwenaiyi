@@ -1,6 +1,7 @@
 import { simpleLLMCall } from "./api-helpers";
 import { kvGet, kvSet } from "./kv-db";
 import { loadApiConfigs } from "./settings-storage";
+import { loadCharacters } from "./character-storage";
 
 const CASTING_PROMPT_KEY = "ai_phone_consort_card_prompt_v1";
 const AUDITION_PROMPT_KEY = "ai_phone_consort_audition_prompt_v1";
@@ -38,6 +39,22 @@ export function saveAuditionPrompt(value: string): void { kvSet(AUDITION_PROMPT_
 export function loadCastingBatch(): CastingBatch | null { try { const raw = kvGet(CASTING_BATCH_KEY); return raw ? JSON.parse(raw) as CastingBatch : null; } catch { return null; } }
 export function saveCastingBatch(batch: CastingBatch): void { kvSet(CASTING_BATCH_KEY, JSON.stringify(batch)); }
 export function composePersona(sections: CastingSections): string { return CASTING_SECTION_LABELS.map(([key, label]) => `【${label}】\n${sections[key]?.trim() || "（暂无）"}`).join("\n\n"); }
+export function composeCorePersona(sections: CastingSections): string {
+  const privateKeys = new Set<keyof CastingSections>(["privateMode", "tension", "spicyLanguage", "relationship"]);
+  return CASTING_SECTION_LABELS.filter(([key]) => !privateKeys.has(key)).map(([key, label]) => `【${label}】\n${sections[key]?.trim() || "（暂无）"}`).join("\n\n");
+}
+export function composeIntimacyProfile(sections: CastingSections): string {
+  return [["私密模式与触发", sections.privateMode], ["骚点与性张力", sections.tension], ["骚话与私密语言", sections.spicyLanguage]].map(([label, value]) => `【${label}】\n${String(value || "").trim() || "（暂无）"}`).join("\n\n");
+}
+
+function refinedCharacterReferences(): string {
+  const preferred = loadCharacters().filter(character => character.persona?.trim()).sort((a, b) => {
+    const score = (name: string) => /方承意|沈昼凝|凝凝/.test(name) ? 1 : 0;
+    return score(b.name) - score(a.name) || (b.persona?.length || 0) - (a.persona?.length || 0);
+  }).slice(0, 3);
+  if (!preferred.length) return "暂无现成人物卡参考。";
+  return preferred.map(character => `【结构参考：${character.name}】\n${(character.persona || "").slice(0, 4200)}\n简量人设：${(character.briefPersona || "").slice(0, 500)}`).join("\n\n");
+}
 
 function cleanJson(text: string): string { const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]; const raw = (fenced || text).trim(); const start = raw.indexOf("["); const end = raw.lastIndexOf("]"); return start >= 0 && end > start ? raw.slice(start, end + 1) : raw; }
 function clampScore(value: unknown): number { const n = Number(value); return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 50; }
@@ -47,6 +64,7 @@ function sanitizeUserAudition(message: string): string { return message.trim().r
 export async function generateCastingCandidates(profile: CastingProfile, creativePrompt = loadCastingPrompt(), auditionPrompt = loadAuditionPrompt()): Promise<CastingCandidate[]> {
   const apiConfig = loadApiConfigs().find((item) => item.apiKey?.trim() && item.defaultModel?.trim());
   if (!apiConfig) throw new Error("还没有可用的 API 配置，请先在设置里配置模型。");
+  creativePrompt = `${creativePrompt}\n\n【现有精修人物卡参考｜只学习结构密度、活人感与分层方式，严禁复制姓名、经历、关系和口癖】\n${refinedCharacterReferences()}`;
   const prompt = `${creativePrompt}\n\n【本轮生成上下文｜最高优先级】\n世界观与已选世界书资料：${profile.worldContext || "现代现实世界"}\n关系前提：${profile.relationshipPremise || "尚未确定关系，不默认热恋"}\n文风、尺度与张力：${profile.styleDirective || "鲜明、具体、拒绝模板化"}\n\n【人物偏好】\n现实身份：${profile.identity || "随机但真实"}\n互联网人格：${profile.internetPersona || "随机具体中文互联网轨迹"}\n性格底色：${profile.temperament || "随机且鲜明"}\n萌点：${profile.contrast || "具体生活弱点"}\n骚点/性张力：${profile.tension || "强且与人格绑定"}\n控制倾向：${profile.controlStyle || "随机分化"}\n补充：${profile.extra || "无"}\n\n【试戏规则】\n${auditionPrompt}\n\n生成3位差异显著候选，只输出JSON数组。格式：\n[{"name":"","soulLine":"","identity":"","keywords":["","",""],"personality":"","briefPersona":"","sections":{"basic":"","life":"","core":"","traits":"","internet":"","daily":"","privateMode":"","cute":"","tension":"","spicyLanguage":"","worldview":"","social":"","relationship":"","ooc":""},"auditionPrompts":[{"title":"日常生活","sender":"user","purpose":"测试日常活人感","message":""},{"title":"严肃讨论","sender":"user","purpose":"测试知识与公私分明","message":""},{"title":"分歧与边界","sender":"user","purpose":"测试边界和反应","message":""},{"title":"私密触发","sender":"user","purpose":"测试私密语言开关","message":""}],"audit":{"vitality":0,"boundaries":0,"voice":0,"contrast":0,"tension":0,"oocRisk":0,"note":""}}]`;
   const result = await simpleLLMCall(apiConfig, [{ role: "system", content: "只输出有效JSON，不得省略字段。所有角色均为成年人。" }, { role: "user", content: prompt }], { temperature: 1, max_tokens: 16000 });
   if (result.error || !result.content) throw new Error(result.error || "模型没有返回候选人物卡。");

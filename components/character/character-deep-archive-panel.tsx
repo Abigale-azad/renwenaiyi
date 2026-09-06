@@ -18,7 +18,7 @@ export function CharacterDeepArchivePanel({ character, onBack, onCharacterChange
 
   const entries = [
     { key: "relationship" as const, no: "01", en: "RELATIONSHIP & SCENARIO", zh: "关系与情境", note: "现实关系、暧昧尺度、亲密档案与情境世界" },
-    { key: "growth" as const, no: "02", en: "GROWTH & MEMORY", zh: "成长与记忆", note: "只收录经你确认的人格变化与成长轨迹" },
+    { key: "growth" as const, no: "02", en: "GROWTH & MEMORY", zh: "成长与记忆", note: "该角色的短期、长期、核心记忆与成长轨迹" },
     { key: "privacy" as const, no: "03", en: "INFORMATION BOUNDARY", zh: "信息边界", note: "控制本角色是否可以读取其他联系人的聊天" },
   ];
 

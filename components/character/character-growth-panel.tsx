@@ -4,8 +4,10 @@ import type { Character } from "@/lib/character-types";
 import { loadCharacterGrowth, decideGrowth, setOtherChatsPermission, type CharacterGrowth, type GrowthRevision } from "@/lib/character-growth-storage";
 import { migrateCharacterGrowth, runManualPersonalityGrowth } from "@/lib/personality-growth";
 import { PageShell } from "@/components/ui/page-shell";
+import { MemoryBankPage } from "@/components/memory/memory-bank-page";
+import { CharacterMemoryAudit } from "@/components/character/character-memory-audit";
 
-const labels = { current: "当前成长", pending: "待你确认", history: "成长轨迹", privacy: "信息边界" };
+const labels = { current: "当前成长", pending: "待你确认", history: "成长轨迹", memory: "角色记忆", privacy: "信息边界" };
 export function CharacterGrowthPanel({ character, onBack, initialTab = "current" }: { character: Character; onBack: () => void; initialTab?: keyof typeof labels }) {
   const [tab, setTab] = useState<keyof typeof labels>(initialTab);
   const [state, setState] = useState<CharacterGrowth>({ revisions: [], allowOtherChats: false });
@@ -38,7 +40,10 @@ export function CharacterGrowthPanel({ character, onBack, initialTab = "current"
       <p className="growth-intro">经你确认的变化才会进入该角色；核心人物卡不会被自动改写。</p>
       <nav className="growth-tabs" aria-label="成长分类">{Object.entries(labels).map(([key, label]) => <button key={key} type="button" aria-pressed={tab === key} onClick={() => { setTab(key as keyof typeof labels); setEditor(null); }}>{label}{key === "pending" ? ` · ${state.revisions.filter(r => r.status === "pending").length}` : ""}</button>)}</nav>
       {notice && <p role="status" className="growth-notice">{notice}</p>}
-      {tab === "privacy" ? <div className="growth-card">
+      {tab === "memory" ? <div className="growth-memory-embed">
+        <CharacterMemoryAudit characterId={character.id} />
+        <MemoryBankPage view="detail" selectedCharId={character.id} onSelectChar={() => undefined} />
+      </div> : tab === "privacy" ? <div className="growth-card">
         <h3 className="font-semibold">私聊默认互不知情</h3>
         <p>自己的聊天和记忆：按角色读取。其他微信联系人、预览和历史：{state.allowOtherChats ? "已明确授权" : "执行层已禁止"}。</p>
         <p className="text-sm opacity-75">此开关只控制内置查手机工具，不是任意第三方 JS 插件的安全沙箱。全局世界书、你主动转述的内容、已有被污染的记忆仍需检查。关闭权限不会自动删除历史。</p>

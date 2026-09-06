@@ -498,7 +498,7 @@ function normalizeLayout(raw: unknown, widgets: WidgetInstance[], dockIds: Set<D
     const pageKey = getDesktopPageKey(page);
     // Icons that live in the dock must never also appear on a page.
     layout[pageKey] = normalizePageV2(candidate[pageKey], widgets.filter(w => w.page === page), folderIds)
-      .filter((ic) => !dockIds.has(ic.id));
+      .filter((ic) => !dockIds.has(ic.id) && ic.id !== "resources");
   }
 
   // Ensure all default icons exist somewhere across desktop pages (but not ones
@@ -1481,8 +1481,9 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       const hydratedWidgets = loadWidgets();
       setWidgets(hydratedWidgets);
       // Dock loads first so page normalization can keep the two disjoint.
-      const hydratedDock = loadDockLayout();
+      const hydratedDock = loadDockLayout().filter(id => id !== "resources");
       setDock(hydratedDock);
+      writeDockLayout(hydratedDock);
       const dockIds = new Set<DesktopIconId>(hydratedDock);
       const hydratedFolders = loadDesktopFolders();
       const rawV2 = kvGet(ICON_LAYOUT_STORAGE_KEY);
