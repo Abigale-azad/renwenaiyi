@@ -256,6 +256,7 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
             isExisting={Boolean(view.id)}
             onBack={handleBackFromDetail}
             onEdit={() => setView({ type: "detail", id: view.id, isEditing: true })}
+            onCharacterChanged={() => setCharacters(loadCharacters())}
             onCancelEdit={() => {
               if (view.id) {
                 setView({ type: "detail", id: view.id, isEditing: false });
@@ -1778,6 +1779,7 @@ function CharArchiveView({
   isExisting = false,
   onBack,
   onEdit,
+  onCharacterChanged,
   onCancelEdit,
   onSave,
   onRestoreVersion,
@@ -1791,6 +1793,7 @@ function CharArchiveView({
   isExisting?: boolean;
   onBack: () => void;
   onEdit: () => void;
+  onCharacterChanged?: () => void;
   onCancelEdit?: () => void;
   onSave?: (data: CharacterImportData, createVersion: boolean) => void;
   onRestoreVersion?: (version: CharacterVersion) => void;
@@ -2308,7 +2311,7 @@ function CharArchiveView({
     return <CharacterGrowthPanel key={char.id} character={char} onBack={() => setShowGrowth(false)} />;
   }
   if (showRelationship && isExisting && !isEditing) {
-    return <CharacterRelationshipPanel key={char.id} character={char} onBack={() => setShowRelationship(false)} />;
+    return <CharacterRelationshipPanel key={char.id} character={char} onBack={() => setShowRelationship(false)} onCharacterChanged={onCharacterChanged} />;
   }
   return (
     <PageShell

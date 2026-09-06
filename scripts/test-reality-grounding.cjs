@@ -31,6 +31,10 @@ const relationshipStorage = fs.readFileSync(path.join(root, 'lib/character-relat
 assert.ok(relationshipStorage.includes('currentMode: "reality"'), 'relationship profile must default to reality mode');
 assert.ok(relationshipStorage.includes('亲密档案与虚构情境当前未加载'), 'reality mode must explicitly unload private contexts');
 assert.ok(relationshipStorage.includes('用户已在界面明确开启'), 'private modes must require structured UI activation');
+const migration = fs.readFileSync(path.join(root, 'lib/character-card-migration.ts'), 'utf8');
+assert.ok(migration.includes('不得发明'), 'card migration must forbid invented facts');
+assert.ok(migration.includes('backupCharacterVersion'), 'card migration must create a version backup before applying');
+assert.ok(migration.includes('undoCharacterSplit'), 'card migration must be reversible');
 assert.ok(executor.includes('只有 success 且 action_result 含有实际结果的动作'));
 assert.ok(executor.includes('不要编造结果中不存在的文件'));
 assert.ok(casting.includes('view === "cards" || view === "prompts" ? "setup" : "cards"'), 'candidate back button must return to setup');

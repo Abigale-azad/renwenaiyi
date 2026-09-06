@@ -1,68 +1,36 @@
 "use client";
-
 import { useEffect, useState } from "react";
+import { Archive, Check, ChevronRight, RotateCcw, Sparkles } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { CHAT_MODE_LABELS, loadCharacterRelationship, saveCharacterRelationship, type CharacterRelationshipProfile, type RelationshipStage } from "@/lib/character-relationship-storage";
+import { applyCharacterSplit, generateCharacterSplitDraft, hasCharacterSplitBackup, undoCharacterSplit, type CharacterSplitDraft } from "@/lib/character-card-migration";
 import { PageShell } from "@/components/ui/page-shell";
-
 const STAGES: Array<{ value: RelationshipStage; label: string; hint: string }> = [
-  { value: "new", label: "刚认识", hint: "不预设亲密关系" },
-  { value: "familiar", label: "熟悉中", hint: "可以自然关心，但不越级" },
-  { value: "ambiguous", label: "暧昧中", hint: "允许试探，不等于恋爱成立" },
-  { value: "confirmed_online", label: "已确认线上关系", hint: "只承认线上关系，不虚构现实共同生活" },
-  { value: "confirmed_real", label: "已确认现实关系", hint: "仅在你确实确认后选择" },
+  { value: "new", label: "初识", hint: "不预设亲密关系" }, { value: "familiar", label: "熟悉", hint: "关心但不越级" }, { value: "ambiguous", label: "暧昧", hint: "试探不等于确立" }, { value: "confirmed_online", label: "线上确认", hint: "只承认线上关系" }, { value: "confirmed_real", label: "现实确认", hint: "仅限现实已成立" },
 ];
-
-export function CharacterRelationshipPanel({ character, onBack }: { character: Character; onBack: () => void }) {
+const EMPTY: CharacterSplitDraft = { coreCard: "", realityFacts: "", relationshipBoundaries: "", allowedAddresses: "", intimacyProfile: "", scenarioProfile: "" };
+function Field({ index, title, hint, value, onChange, rows = 5, placeholder }: { index: string; title: string; hint: string; value: string; onChange: (v: string) => void; rows?: number; placeholder?: string }) { return <label className="relationship-field"><span className="relationship-field-index">{index}</span><span className="relationship-field-heading"><b>{title}</b><small>{hint}</small></span><textarea rows={rows} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}/></label>; }
+export function CharacterRelationshipPanel({ character, onBack, onCharacterChanged }: { character: Character; onBack: () => void; onCharacterChanged?: () => void }) {
   const [profile, setProfile] = useState<CharacterRelationshipProfile>(() => loadCharacterRelationship(character.id));
-  const [notice, setNotice] = useState("");
-  useEffect(() => setProfile(loadCharacterRelationship(character.id)), [character.id]);
-
-  function save() {
-    saveCharacterRelationship(character.id, profile);
-    setProfile(loadCharacterRelationship(character.id));
-    setNotice("已保存。现实关系始终注入；亲密与情境内容只在聊天顶部明确开启后注入。");
-  }
-
-  const fieldClass = "mt-2 w-full rounded-xl border p-3 bg-transparent text-inherit";
-  return <PageShell title={`${character.name} · 关系与模式`} onBack={onBack}>
-    <section className="space-y-5 p-4" style={{ background: "var(--c-page-body-bg, #faf8f5)", color: "var(--c-text, #252323)" }}>
-      <div className="rounded-2xl border p-4">
-        <h3 className="font-semibold">当前聊天模式</h3>
-        <p className="mt-2 text-sm opacity-75">现在是「{CHAT_MODE_LABELS[profile.currentMode]}」。模式在具体聊天顶部切换；这里负责保存长期边界，不靠角色自己猜。</p>
-      </div>
-
-      <div className="space-y-4 rounded-2xl border p-4">
-        <div><h3 className="font-semibold">现实关系</h3><p className="mt-1 text-sm opacity-70">这是事实层，始终生效。人物卡里的浪漫设定不能自动把现实关系升级。</p></div>
-        <label className="block text-sm">关系阶段
-          <select className={fieldClass} value={profile.relationshipStage} onChange={e => setProfile({ ...profile, relationshipStage: e.target.value as RelationshipStage })}>
-            {STAGES.map(item => <option key={item.value} value={item.value}>{item.label} · {item.hint}</option>)}
-          </select>
-        </label>
-        <label className="block text-sm">明确允许的称呼
-          <input className={fieldClass} value={profile.allowedAddresses} onChange={e => setProfile({ ...profile, allowedAddresses: e.target.value })} placeholder="例如：卿卿、妈妈（用逗号分隔）；留空则不默认亲昵称呼" />
-        </label>
-        <label className="block text-sm">已确认的现实事实
-          <textarea className={fieldClass} rows={5} value={profile.confirmedRealityFacts} onChange={e => setProfile({ ...profile, confirmedRealityFacts: e.target.value })} placeholder="只写现实中确实成立、希望角色长期知道的事实。" />
-        </label>
-        <label className="block text-sm">现实关系边界
-          <textarea className={fieldClass} rows={4} value={profile.relationshipBoundaries} onChange={e => setProfile({ ...profile, relationshipBoundaries: e.target.value })} placeholder="例如：不自称老公；不能声称来过我家；完成工作必须有真实产出。" />
-        </label>
-      </div>
-
-      <div className="space-y-4 rounded-2xl border p-4">
-        <div><h3 className="font-semibold">亲密档案</h3><p className="mt-1 text-sm opacity-70">只在你从聊天顶部开启「亲密」后加载。退出后，里面的动作与关系不会变成现实记忆。</p></div>
-        <textarea className={fieldClass} rows={12} value={profile.intimacyProfile} onChange={e => setProfile({ ...profile, intimacyProfile: e.target.value })} placeholder="粘贴该角色专属的亲密偏好、开关、边界与退出规则。现有人物卡不会被自动删改。" />
-      </div>
-
-      <div className="space-y-4 rounded-2xl border p-4">
-        <div><h3 className="font-semibold">情境档案</h3><p className="mt-1 text-sm opacity-70">用于共感、里世界、AU 等虚构演出；只在「情境」模式加载。</p></div>
-        <textarea className={fieldClass} rows={8} value={profile.scenarioProfile} onChange={e => setProfile({ ...profile, scenarioProfile: e.target.value })} placeholder="填写固定世界规则；留空时角色必须先问本次场景。" />
-      </div>
-
-      {notice && <p role="status" className="rounded-xl border p-3 text-sm">{notice}</p>}
-      <button type="button" className="w-full rounded-xl bg-[var(--c-text)] px-4 py-3 font-semibold text-[var(--c-page-body-bg)]" onClick={save}>保存关系与模式档案</button>
-      <p className="pb-4 text-xs opacity-60">安全说明：本期不自动从旧人物卡抽取或删除内容，避免破坏精修卡。旧卡中的私密文本仍会留在核心卡里，但现实模式协议会阻止它自动触发；下一期再提供逐段迁移与对比确认。</p>
+  const [notice, setNotice] = useState(""); const [migrationOpen, setMigrationOpen] = useState(false); const [busy, setBusy] = useState(false); const [draft, setDraft] = useState<CharacterSplitDraft | null>(null); const [hasBackup, setHasBackup] = useState(() => hasCharacterSplitBackup(character.id));
+  useEffect(() => { setProfile(loadCharacterRelationship(character.id)); setHasBackup(hasCharacterSplitBackup(character.id)); }, [character.id]);
+  function save() { saveCharacterRelationship(character.id, profile); setProfile(loadCharacterRelationship(character.id)); setNotice("档案已封存。不同模式只读取自己的资料层。"); }
+  async function analyze() { setBusy(true); setNotice("正在辨认旧卡结构，只生成预览，不会改原卡…"); try { setDraft(await generateCharacterSplitDraft(character)); setNotice("拆分草稿已生成。确认前原卡不会变化。"); } catch (e) { setNotice(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
+  function apply() { if (!draft) return; try { applyCharacterSplit(character, draft); setProfile(loadCharacterRelationship(character.id)); setHasBackup(true); onCharacterChanged?.(); setNotice("迁移完成，旧卡已自动备份。请返回检查核心人格。"); setMigrationOpen(false); } catch (e) { setNotice(e instanceof Error ? e.message : String(e)); } }
+  function undo() { if (!undoCharacterSplit(character.id)) return; setProfile(loadCharacterRelationship(character.id)); setHasBackup(false); setDraft(null); onCharacterChanged?.(); setNotice("已撤销最近一次拆分，人物卡与关系档案均已恢复。"); }
+  const changeDraft = (key: keyof CharacterSplitDraft, value: string) => setDraft(old => ({ ...(old || EMPTY), [key]: value }));
+  return <PageShell title="" onBack={onBack} className="relationship-dossier-page"><div className="relationship-dossier">
+    <header className="relationship-cover"><div className="relationship-cover-kicker">RELATIONSHIP ARCHIVE · {character.id.slice(-6).toUpperCase()}</div><h1>{character.name}</h1><p>关系与模式档案</p><div className="relationship-mode-seal"><span>当前通道</span><b>{CHAT_MODE_LABELS[profile.currentMode]}</b></div></header>
+    <section className="relationship-section"><div className="relationship-section-title"><span>01</span><div><b>现实关系</b><small>REALITY LAYER · 始终生效</small></div></div>
+      <div className="relationship-stage-grid">{STAGES.map(x => <button key={x.value} type="button" data-active={profile.relationshipStage === x.value || undefined} onClick={() => setProfile({ ...profile, relationshipStage: x.value })}><b>{x.label}</b><small>{x.hint}</small></button>)}</div>
+      <Field index="A" title="允许称呼" hint="只登记明确允许长期使用的称呼" value={profile.allowedAddresses} onChange={v => setProfile({ ...profile, allowedAddresses: v })} rows={2} placeholder="例如：卿卿、妈妈；留空则不默认亲昵称呼"/><Field index="B" title="现实事实" hint="现实中确实成立、希望角色长期知道的事" value={profile.confirmedRealityFacts} onChange={v => setProfile({ ...profile, confirmedRealityFacts: v })}/><Field index="C" title="现实边界" hint="不能冒充完成、不能虚构见面等规则" value={profile.relationshipBoundaries} onChange={v => setProfile({ ...profile, relationshipBoundaries: v })}/>
     </section>
+    <section className="relationship-section relationship-section-private"><div className="relationship-section-title"><span>02</span><div><b>私密分层</b><small>SEALED LAYERS · 按模式解封</small></div></div><Field index="P" title="亲密档案" hint="仅在聊天顶部开启“亲密”时读取" value={profile.intimacyProfile} onChange={v => setProfile({ ...profile, intimacyProfile: v })} rows={10} placeholder="该角色专属偏好、触发条件、停止与退出规则"/><Field index="S" title="情境世界" hint="仅在“情境”模式读取，与现实事实隔离" value={profile.scenarioProfile} onChange={v => setProfile({ ...profile, scenarioProfile: v })} rows={8} placeholder="共感、里世界、AU 或其他虚构规则"/></section>
+    <section className="relationship-migration-card"><div className="relationship-migration-icon"><Archive size={20}/></div><div><b>旧人物卡安全拆分</b><p>原卡与草稿对照审阅，确认后才迁移。</p></div><button type="button" onClick={() => setMigrationOpen(true)}>开始整理 <ChevronRight size={16}/></button></section>
+    {hasBackup && <button type="button" className="relationship-undo" onClick={undo}><RotateCcw size={15}/> 撤销最近一次人物卡拆分</button>}{notice && <p className="relationship-notice" role="status">{notice}</p>}<button type="button" className="relationship-save" onClick={save}><Check size={17}/> 保存并封存</button>
+  </div>
+  {migrationOpen && <div className="relationship-migration-layer" role="dialog" aria-modal="true"><div className="relationship-migration-sheet"><header><div><small>SAFE CARD MIGRATION</small><h2>旧卡拆分预览</h2></div><button onClick={() => setMigrationOpen(false)}>关闭</button></header><details open><summary>原始人物卡（只读）</summary><pre>{character.persona}</pre></details>
+    {!draft ? <div className="relationship-analyze"><Sparkles size={24}/><b>先让 AI 归类，不直接改卡</b><p>只依据原文拆分，不补写现实经历；生成后每栏都能改。</p><button disabled={busy} onClick={() => void analyze()}>{busy ? "正在拆分…" : "生成拆分草稿"}</button></div> : <div className="relationship-draft"><Field index="1" title="核心人物卡" hint="迁移后写回人物卡" value={draft.coreCard} onChange={v => changeDraft("coreCard", v)} rows={14}/><Field index="2" title="现实事实" hint="没有可靠依据可以留空" value={draft.realityFacts} onChange={v => changeDraft("realityFacts", v)}/><Field index="3" title="现实边界" hint="关系与行为限制" value={draft.relationshipBoundaries} onChange={v => changeDraft("relationshipBoundaries", v)}/><Field index="4" title="允许称呼" hint="用逗号分隔" value={draft.allowedAddresses} onChange={v => changeDraft("allowedAddresses", v)} rows={2}/><Field index="5" title="亲密档案" hint="只在亲密模式加载" value={draft.intimacyProfile} onChange={v => changeDraft("intimacyProfile", v)} rows={10}/><Field index="6" title="情境世界" hint="只在情境模式加载" value={draft.scenarioProfile} onChange={v => changeDraft("scenarioProfile", v)} rows={8}/><div className="relationship-migration-actions"><button onClick={() => void analyze()} disabled={busy}>重新分析</button><button className="primary" onClick={apply}>确认迁移并备份原卡</button></div></div>}
+  </div></div>}
   </PageShell>;
 }

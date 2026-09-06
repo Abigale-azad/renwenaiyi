@@ -5467,7 +5467,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                             type="button"
                             onClick={() => setShowModePicker(true)}
                             aria-label={`当前${CHAT_MODE_LABELS[chatMode]}模式，点击切换`}
-                            className="ml-2 rounded-full border px-2 py-0.5 align-middle text-[10px] font-medium opacity-75"
+                            className="chat-mode-chip"
                             style={{ background: chatMode === "reality" ? "transparent" : "rgba(151, 111, 128, .14)" }}
                         >{CHAT_MODE_LABELS[chatMode]}</button>}
                         {(isGenerating || isOfflineGenerating) && (
@@ -5484,8 +5484,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 </div>
             </header>
             {showModePicker && !session.isGroup && (
-                <div className="fixed inset-0 z-[10040] flex items-end justify-center bg-black/40 px-3 pb-4" role="dialog" aria-modal="true" aria-label="切换聊天模式" onClick={() => setShowModePicker(false)}>
-                    <div className="w-full max-w-md rounded-3xl border p-4 shadow-2xl" style={{ background: "var(--c-page-body-bg, #fff)", color: "var(--c-text, #222)" }} onClick={event => event.stopPropagation()}>
+                <div className="chat-mode-layer" role="dialog" aria-modal="true" aria-label="切换聊天模式" onClick={() => setShowModePicker(false)}>
+                    <div className="chat-mode-sheet" onClick={event => event.stopPropagation()}>
                         <div className="flex items-center justify-between"><div><h3 className="font-semibold">这次怎么聊</h3><p className="mt-1 text-xs opacity-65">模式由你明确切换，角色不能自己进入。</p></div><button type="button" className="rounded-full border p-2" onClick={() => setShowModePicker(false)} aria-label="关闭"><X size={18}/></button></div>
                         <div className="mt-4 grid grid-cols-2 gap-2">
                             {([
@@ -5493,7 +5493,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                 ["flirt", "暧昧", "允许试探，不自动确立关系"],
                                 ["intimate", "亲密", "加载该角色的专属亲密档案"],
                                 ["scenario", "情境", "加载共感／里世界等虚构设定"],
-                            ] as Array<[CharacterChatMode, string, string]>).map(([mode, label, hint]) => <button key={mode} type="button" onClick={() => selectChatMode(mode)} className="rounded-2xl border p-3 text-left" style={{ background: chatMode === mode ? "rgba(151,111,128,.16)" : "transparent", borderColor: chatMode === mode ? "rgba(151,111,128,.55)" : undefined }}><span className="block font-semibold">{label}{chatMode === mode ? " · 当前" : ""}</span><span className="mt-1 block text-xs opacity-65">{hint}</span></button>)}
+                            ] as Array<[CharacterChatMode, string, string]>).map(([mode, label, hint]) => <button key={mode} type="button" data-active={chatMode === mode || undefined} onClick={() => selectChatMode(mode)} className="chat-mode-option"><span>{label}</span><small>{hint}</small>{chatMode === mode && <i>ACTIVE</i>}</button>)}
                         </div>
                         {(chatMode === "intimate" || chatMode === "scenario") && <p className="mt-3 rounded-xl border p-3 text-xs opacity-75">该模式中的身体动作、关系与事件只属于演出，不会自动成为现实事实。点「现实」即可立即退出。</p>}
                     </div>
