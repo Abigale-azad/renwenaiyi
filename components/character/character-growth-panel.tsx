@@ -33,21 +33,21 @@ export function CharacterGrowthPanel({ character, onBack }: { character: Charact
   function decide(revision: GrowthRevision, approved: boolean, text?: string) {
     try { decideGrowth(character.id, revision.id, approved, text); setEditor(null); setNotice(approved ? "已采用，仅本角色单聊生效；旧版本已保留" : "已停用／否决，记录仍保留"); } catch(e) { setNotice(String(e)); }
   }
-  return <PageShell title={`${character.name} · 成长`} onBack={onBack}>
-    <section className="p-4 space-y-4" style={{ background: "var(--c-page-body-bg, #faf8f5)", color: "var(--c-text, #252323)" }}>
-      <p className="text-sm opacity-75">核心人物卡不自动改写。成长先生成候选，经你确认后才用于该角色单聊。旧成长簿保留为迁移备份，不再注入世界书。</p>
-      <nav className="flex flex-wrap gap-2" aria-label="成长分类">{Object.entries(labels).map(([key, label]) => <button key={key} type="button" aria-pressed={tab === key} className="rounded-xl border px-3 py-2" style={{ fontWeight: tab === key ? 700 : 400, background: tab === key ? "rgba(140,110,120,.16)" : "transparent" }} onClick={() => { setTab(key as keyof typeof labels); setEditor(null); }}>{label}{key === "pending" ? ` (${state.revisions.filter(r => r.status === "pending").length})` : ""}</button>)}</nav>
-      <p role="status" className="text-sm">{notice}</p>
-      {tab === "privacy" ? <div className="space-y-4 rounded-2xl border p-4">
+  return <PageShell title={`${character.name} · 成长`} onBack={onBack} className="growth-compact-page">
+    <section className="growth-compact">
+      <p className="growth-intro">经你确认的变化才会进入该角色；核心人物卡不会被自动改写。</p>
+      <nav className="growth-tabs" aria-label="成长分类">{Object.entries(labels).map(([key, label]) => <button key={key} type="button" aria-pressed={tab === key} onClick={() => { setTab(key as keyof typeof labels); setEditor(null); }}>{label}{key === "pending" ? ` · ${state.revisions.filter(r => r.status === "pending").length}` : ""}</button>)}</nav>
+      {notice && <p role="status" className="growth-notice">{notice}</p>}
+      {tab === "privacy" ? <div className="growth-card">
         <h3 className="font-semibold">私聊默认互不知情</h3>
         <p>自己的聊天和记忆：按角色读取。其他微信联系人、预览和历史：{state.allowOtherChats ? "已明确授权" : "执行层已禁止"}。</p>
         <p className="text-sm opacity-75">此开关只控制内置查手机工具，不是任意第三方 JS 插件的安全沙箱。全局世界书、你主动转述的内容、已有被污染的记忆仍需检查。关闭权限不会自动删除历史。</p>
         {state.allowOtherChats ? <button className="rounded-xl border p-3" onClick={() => setOtherChatsPermission(character.id, false)}>撤销跨聊天读取权限</button> : <button className="rounded-xl border p-3" onClick={() => setConfirmAccess(true)}>申请开放跨聊天读取</button>}
         {confirmAccess && <div role="alertdialog" aria-label="跨聊天授权确认" className="rounded-xl border p-3 space-y-3"><p>确认允许{character.name}通过内置工具读取其他联系人的名称、消息预览和私聊内容？这是持续授权，可随时撤销。</p><button className="border rounded-lg p-2" onClick={() => { setOtherChatsPermission(character.id, true); setConfirmAccess(false); }}>明确允许</button> <button className="border rounded-lg p-2" onClick={() => setConfirmAccess(false)}>取消</button></div>}
       </div> : <>
-        <button type="button" disabled={busy} className="rounded-xl border px-4 py-3 disabled:opacity-50" onClick={() => void generate()}>{busy ? "整理中…" : "整理现有互动为候选（调用总结 API）"}</button>
+        <button type="button" disabled={busy} className="growth-generate" onClick={() => void generate()}>{busy ? "整理中…" : "从现有互动生成候选"}</button>
         {rows.length === 0 && <p className="py-8 opacity-65">{tab === "current" ? "暂无已采用成长。可到“待你确认”审阅旧成长簿，或生成新候选。" : "这里暂时没有记录。"}</p>}
-        {rows.map(revision => <article key={revision.id} className="rounded-2xl border p-4 space-y-3">
+        {rows.map(revision => <article key={revision.id} className="growth-card">
           <p className="text-sm opacity-70">{new Date(revision.createdAt).toLocaleString()} · {revision.source} · {revision.status === "approved" ? "已采用" : revision.status === "pending" ? "待确认" : revision.status === "rejected" ? "已否决／停用" : "历史版本"}</p>
           <p className="whitespace-pre-wrap break-words">{revision.content}</p>
           <details><summary>查看来源证据</summary><p className="text-sm whitespace-pre-wrap break-words mt-3">{revision.evidence}</p></details>

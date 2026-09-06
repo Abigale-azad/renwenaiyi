@@ -601,6 +601,9 @@ export function ChatSettingsPanel({
     const handleClearHistory = () => {
         clearChatSessionMessages(session.id);
         setShowConfirmClear(false);
+        // Close the settings layer so ChatRoom immediately reloads the now-empty store.
+        // Keeping the panel mounted made the action look unresponsive on mobile.
+        onClose();
     };
 
     const handleClearOfflineHistory = () => {
@@ -1158,13 +1161,14 @@ export function ChatSettingsPanel({
                             <span className="menu-desc">切换到文本协议 API 前使用</span>
                         </div>
                     </button>
-                    <button className="menu-item" onClick={() => setShowConfirmClear(true)}>
+                    {!showConfirmClear ? <button className="menu-item" onClick={() => setShowConfirmClear(true)}>
                         <ChatInfoIcon icon={Trash2} color="var(--c-danger)" />
-                        <div className="menu-label-group">
-                            <span className="menu-label menu-label-danger">清空线上聊天记录</span>
-                            <span className="menu-desc">不影响线下模式记录</span>
-                        </div>
-                    </button>
+                        <div className="menu-label-group"><span className="menu-label menu-label-danger">清空线上聊天记录</span><span className="menu-desc">不影响线下模式记录</span></div>
+                    </button> : <div className="menu-item" role="group" aria-label="确认清空线上聊天记录">
+                        <ChatInfoIcon icon={AlertCircle} color="var(--c-danger)" />
+                        <div className="menu-label-group"><span className="menu-label menu-label-danger">确认清空？</span><span className="menu-desc">删除后无法恢复</span></div>
+                        <div className="menu-right gap-2"><button type="button" className="ui-btn ui-btn-ghost !min-w-0 !px-3" onClick={() => setShowConfirmClear(false)}>取消</button><button type="button" className="ui-btn ui-btn-danger !min-w-0 !px-3" onClick={handleClearHistory}>清空</button></div>
+                    </div>}
                     <button
                         className="menu-item"
                         disabled={offlineHistoryBusy}
@@ -1361,20 +1365,6 @@ export function ChatSettingsPanel({
 
             {/* Modal: Screen Effects */}
             {showScreenEffects && <ScreenEffectSettingsModal onClose={() => setShowScreenEffects(false)} />}
-
-            {/* Modal: Confirm Clear History */}
-            {showConfirmClear && (
-                <ConfirmDialog
-                    title="确定要清空线上聊天记录吗？"
-                    message="只清空普通聊天记录，不影响线下模式记录。清空后无法恢复。是否继续？"
-                    icon={AlertCircle}
-                    variant="danger"
-                    confirmLabel="清空"
-                    cancelLabel="取消"
-                    onConfirm={handleClearHistory}
-                    onCancel={() => setShowConfirmClear(false)}
-                />
-            )}
 
             {/* Modal: Confirm Clear Offline History */}
             {showConfirmClearOffline && (
