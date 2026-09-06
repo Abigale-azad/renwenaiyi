@@ -103,7 +103,13 @@ export function CastingStudio({ worldGroups, initialWorldId, onClose, onSaved, o
 
   return <div className="fixed inset-0 z-[10040] bg-[#0d0d0f] text-[#f3f1ed] overflow-y-auto" role="dialog" aria-modal="true" aria-label="妃卡">
     <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-4 bg-[#0d0d0f]/95 border-b border-white/10">
-      <button className="w-10 h-10 flex items-center justify-center" onClick={view === "setup" ? onClose : () => setView(view === "cards" || view === "prompts" ? "setup" : "cards")} aria-label="返回">{view === "setup" ? <X size={20}/> : <ChevronLeft size={21}/>}</button>
+      <button
+        className="w-10 h-10 flex items-center justify-center"
+        onClick={view === "archive" || view === "scripts" ? () => setView("cards") : onClose}
+        aria-label={view === "archive" || view === "scripts" ? "返回候选列表" : "退出妃卡"}
+      >
+        {view === "archive" || view === "scripts" ? <ChevronLeft size={21}/> : <X size={20}/>} 
+      </button>
       <div className="text-center"><div className="text-[10px] tracking-[.25em] text-[#b69b73]">CONSORT CARD</div><h2 className="text-lg font-semibold">{view === "prompts" ? "提示词设置" : view === "archive" ? "完整人物卡" : view === "scripts" ? "专属试戏剧本" : "妃卡"}</h2></div>
       <button className="w-10 h-10 flex items-center justify-center" onClick={() => setView("prompts")} aria-label="提示词设置"><Settings2 size={19}/></button>
     </header>
