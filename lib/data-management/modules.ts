@@ -90,6 +90,7 @@ export const DATA_MODULES: DataModuleDefinition[] = [
         keys: [
           "ai_phone_characters_v1",
           "ai_phone_character_growth_v1",
+          "ai_phone_character_relationship_v1",
           "ai_phone_bg_items_v1",
         ],
       },

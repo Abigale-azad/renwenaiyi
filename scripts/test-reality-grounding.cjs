@@ -1,6 +1,8 @@
 // Static regression checks for the reality boundary. No user data is loaded.
 const fs = require('node:fs');
+const path = require('node:path');
 const assert = require('node:assert/strict');
+const root = process.cwd();
 const assembler = fs.readFileSync('lib/llm-prompt-assembler.ts', 'utf8');
 const executor = fs.readFileSync('lib/tool-executor.ts', 'utf8');
 const casting = fs.readFileSync('components/character/casting-studio.tsx', 'utf8');
@@ -22,6 +24,13 @@ for (const required of [
 assert.ok(!assembler.includes('你存在的唯一意义，是真心爱{{user}}'));
 assert.ok(!assembler.includes('你不是旁观者，你是{{user}}生活里的人'));
 assert.ok((assembler.match(/marker: "realityGrounding"/g) || []).length >= 2, 'single and group prompts must be guarded');
+assert.ok(assembler.includes('buildCharacterRelationshipPrompt(character.id)'), 'single chat must inject the per-character relationship mode');
+assert.ok(assembler.includes('群聊不会加载任何角色的亲密档案'), 'group chat must never load private profiles');
+
+const relationshipStorage = fs.readFileSync(path.join(root, 'lib/character-relationship-storage.ts'), 'utf8');
+assert.ok(relationshipStorage.includes('currentMode: "reality"'), 'relationship profile must default to reality mode');
+assert.ok(relationshipStorage.includes('亲密档案与虚构情境当前未加载'), 'reality mode must explicitly unload private contexts');
+assert.ok(relationshipStorage.includes('用户已在界面明确开启'), 'private modes must require structured UI activation');
 assert.ok(executor.includes('只有 success 且 action_result 含有实际结果的动作'));
 assert.ok(executor.includes('不要编造结果中不存在的文件'));
 assert.ok(casting.includes('view === "cards" || view === "prompts" ? "setup" : "cards"'), 'candidate back button must return to setup');

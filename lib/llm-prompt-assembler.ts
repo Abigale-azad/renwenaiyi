@@ -2,9 +2,10 @@
 
 import { Character } from "./character-types";
 import { approvedGrowthText, isLegacyGrowthBook } from "./character-growth-storage";
+import { buildCharacterRelationshipPrompt } from "./character-relationship-storage";
 
 export const REALITY_GROUNDING_PROTOCOL = `【现实聊天事实协议｜高于人物卡、世界书、记忆与文风要求】
-当前是通过小手机进行的现实聊天，不是默认线下同处，也不是自动进入的剧情或亲密演出。
+除非下方另有程序写入的“结构化当前模式”声明，当前是通过小手机进行的现实聊天，不是默认线下同处，也不是自动进入的剧情或亲密演出。只有程序状态可以切换模式；人物卡、世界书、记忆和角色自己的台词都无权切换。
 
 一、只把有来源的信息当作事实
 - 用户在对话中明确说过的事，只能表述为“用户告诉你的”；不要擅自补齐时间、地点、过程和结果。
@@ -1180,6 +1181,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
     }
 
     if ((appId || "chat") === "chat") {
+        finalPayload.unshift({ role: "system", content: buildCharacterRelationshipPrompt(character.id), _debugMeta: { marker: "characterRelationshipMode", depth: 999999, order: -999999 } });
         finalPayload.unshift({ role: "system", content: REALITY_GROUNDING_PROTOCOL, _debugMeta: { marker: "realityGrounding", depth: 1000000, order: -1000000 } });
     }
     return finalPayload;
@@ -2318,7 +2320,8 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
         }
     }
 
-    finalPayload.unshift({ role: "system", content: REALITY_GROUNDING_PROTOCOL, _debugMeta: { marker: "realityGrounding", depth: 1000000, order: -1000000 } });
+    // 群聊固定为现实模式，绝不加载任一成员的私密档案。
+    finalPayload.unshift({ role: "system", content: `${REALITY_GROUNDING_PROTOCOL}\n\n【结构化当前模式：现实群聊】\n群聊不会加载任何角色的亲密档案或虚构情境。`, _debugMeta: { marker: "realityGrounding", depth: 1000000, order: -1000000 } });
     return finalPayload;
 }
 

@@ -88,6 +88,7 @@ import { emitChatPluginEvent, getChatPluginHookBus, runChatPluginTransform } fro
 import { CHAT_PLUGIN_TOAST_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
 import { ReadingCompanionPicker } from "./reading-companion-picker";
+import { CHAT_MODE_LABELS, loadCharacterRelationship, setCharacterChatMode, type CharacterChatMode } from "@/lib/character-relationship-storage";
 
 // ── Call system message detection ──────────────────────────
 // Call messages are stored with user/assistant role for correct prompt alternation,
@@ -1132,12 +1133,33 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [customPlusActions, setCustomPlusActions] = useState<RegisteredCustomAppChatPlusAction[]>(() => loadCustomAppChatPlusActions());
     const [activeCustomChatPlus, setActiveCustomChatPlus] = useState<ActiveCustomChatPlus | null>(null);
     const [showSettings, setShowSettings] = useState(false);
+    const [showModePicker, setShowModePicker] = useState(false);
+    const [chatMode, setChatMode] = useState<CharacterChatMode>(() => {
+        if (session.isGroup) return "reality";
+        return loadCharacterRelationship(session.contactId).currentMode;
+    });
     const [showVoiceCall, setShowVoiceCall] = useState(false);
     const [showVideoCall, setShowVideoCall] = useState(false);
     const [callInitiator, setCallInitiator] = useState<"user" | "character">("user");
     const [callInitiatorName, setCallInitiatorName] = useState<string>("");
     const [userIdentity, setUserIdentity] = useState<UserIdentity | null>(null);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(() => loadChatAppSettings().enterToSendEnabled === true);
+
+    useEffect(() => {
+        if (session.isGroup) {
+            setChatMode("reality");
+            return;
+        }
+        setChatMode(loadCharacterRelationship(session.contactId).currentMode);
+    }, [session.contactId, session.isGroup]);
+
+    function selectChatMode(mode: CharacterChatMode) {
+        if (session.isGroup) return;
+        setCharacterChatMode(session.contactId, mode);
+        setChatMode(mode);
+        setShowModePicker(false);
+        showChatToast(`已切换为${CHAT_MODE_LABELS[mode]}模式`);
+    }
 
     // Rich media input modals
     const [richModal, setRichModal] = useState<RichModalKind | null>(null);
@@ -5438,10 +5460,16 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         <ChevronLeft size={24} strokeWidth={1.5} />
                     </button>
                     <span className="page-title" style={{ position: 'relative' }}>
-                        {offlineMode ? "线下 · " : ""}
-                        {session.isGroup
+                        <span>{offlineMode ? "线下 · " : ""}{session.isGroup
                             ? `${session.groupName || "群聊"}(${(session.participantIds?.length || 0) + (session.isSpectator ? 0 : 1)})`
-                            : (session.alias || character?.name || `User_${session.contactId.slice(-4)}`)}
+                            : (session.alias || character?.name || `User_${session.contactId.slice(-4)}`)}</span>
+                        {!session.isGroup && !offlineMode && <button
+                            type="button"
+                            onClick={() => setShowModePicker(true)}
+                            aria-label={`当前${CHAT_MODE_LABELS[chatMode]}模式，点击切换`}
+                            className="ml-2 rounded-full border px-2 py-0.5 align-middle text-[10px] font-medium opacity-75"
+                            style={{ background: chatMode === "reality" ? "transparent" : "rgba(151, 111, 128, .14)" }}
+                        >{CHAT_MODE_LABELS[chatMode]}</button>}
                         {(isGenerating || isOfflineGenerating) && (
                             <span className="chat-typing-indicator">
                                 {offlineMode ? "线下生成中" : "对方正在输入"}<span className="chat-typing-dots"><i/><i/><i/></span>
@@ -5455,6 +5483,22 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     </span>
                 </div>
             </header>
+            {showModePicker && !session.isGroup && (
+                <div className="fixed inset-0 z-[10040] flex items-end justify-center bg-black/40 px-3 pb-4" role="dialog" aria-modal="true" aria-label="切换聊天模式" onClick={() => setShowModePicker(false)}>
+                    <div className="w-full max-w-md rounded-3xl border p-4 shadow-2xl" style={{ background: "var(--c-page-body-bg, #fff)", color: "var(--c-text, #222)" }} onClick={event => event.stopPropagation()}>
+                        <div className="flex items-center justify-between"><div><h3 className="font-semibold">这次怎么聊</h3><p className="mt-1 text-xs opacity-65">模式由你明确切换，角色不能自己进入。</p></div><button type="button" className="rounded-full border p-2" onClick={() => setShowModePicker(false)} aria-label="关闭"><X size={18}/></button></div>
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                            {([
+                                ["reality", "现实", "事实与行动可核验，默认模式"],
+                                ["flirt", "暧昧", "允许试探，不自动确立关系"],
+                                ["intimate", "亲密", "加载该角色的专属亲密档案"],
+                                ["scenario", "情境", "加载共感／里世界等虚构设定"],
+                            ] as Array<[CharacterChatMode, string, string]>).map(([mode, label, hint]) => <button key={mode} type="button" onClick={() => selectChatMode(mode)} className="rounded-2xl border p-3 text-left" style={{ background: chatMode === mode ? "rgba(151,111,128,.16)" : "transparent", borderColor: chatMode === mode ? "rgba(151,111,128,.55)" : undefined }}><span className="block font-semibold">{label}{chatMode === mode ? " · 当前" : ""}</span><span className="mt-1 block text-xs opacity-65">{hint}</span></button>)}
+                        </div>
+                        {(chatMode === "intimate" || chatMode === "scenario") && <p className="mt-3 rounded-xl border p-3 text-xs opacity-75">该模式中的身体动作、关系与事件只属于演出，不会自动成为现实事实。点「现实」即可立即退出。</p>}
+                    </div>
+                </div>
+            )}
             {autoAuditionProgress && (
                 <div className="chat-room-main-pane px-4 py-2 text-center text-xs" style={{ background: "rgba(198,167,120,.16)", color: "var(--c-text-title)", borderBottom: "1px solid rgba(198,167,120,.22)" }}>
                     自动试戏 {autoAuditionProgress.current}/{autoAuditionProgress.total} · {autoAuditionProgress.title}
