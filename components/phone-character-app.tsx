@@ -54,8 +54,7 @@ import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { normalizeTimeZone } from "@/lib/character-time";
 import { CastingStudio } from "@/components/character/casting-studio";
-import { CharacterGrowthPanel } from "@/components/character/character-growth-panel";
-import { CharacterRelationshipPanel } from "@/components/character/character-relationship-panel";
+import { CharacterDeepArchivePanel } from "@/components/character/character-deep-archive-panel";
 
 type ViewType = "list" | "detail";
 
@@ -1806,8 +1805,7 @@ function CharArchiveView({
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState<"back" | "cancel" | null>(null);
   const [showSaveVersionConfirm, setShowSaveVersionConfirm] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
-  const [showGrowth, setShowGrowth] = useState(false);
-  const [showRelationship, setShowRelationship] = useState(false);
+  const [showDeepArchive, setShowDeepArchive] = useState(false);
   const [versions, setVersions] = useState<CharacterVersion[]>([]);
   const [restoreTarget, setRestoreTarget] = useState<CharacterVersion | null>(null);
   const [deleteVersionTarget, setDeleteVersionTarget] = useState<CharacterVersion | null>(null);
@@ -2274,6 +2272,13 @@ function CharArchiveView({
 
         </div>
 
+        {!dummy && !isEditing && isExisting && (
+          <button type="button" className="char-deep-entry" onClick={() => setShowDeepArchive(true)}>
+            <span><span className="char-archive-label">DEEP ARCHIVE / PRIVATE RECORD</span><b>深层档案</b><small>关系与情境 · 成长与记忆 · 信息边界</small></span>
+            <span aria-hidden="true">›</span>
+          </button>
+        )}
+
         <div className="char-archive-actions">
           {!dummy && confirmDelete ? (
             <div className="char-confirm-row">
@@ -2307,11 +2312,8 @@ function CharArchiveView({
     );
   }
 
-  if (showGrowth && isExisting && !isEditing) {
-    return <CharacterGrowthPanel key={char.id} character={char} onBack={() => setShowGrowth(false)} />;
-  }
-  if (showRelationship && isExisting && !isEditing) {
-    return <CharacterRelationshipPanel key={char.id} character={char} onBack={() => setShowRelationship(false)} onCharacterChanged={onCharacterChanged} />;
+  if (showDeepArchive && isExisting && !isEditing) {
+    return <CharacterDeepArchivePanel key={char.id} character={char} onBack={() => setShowDeepArchive(false)} onCharacterChanged={onCharacterChanged} />;
   }
   return (
     <PageShell
@@ -2336,10 +2338,6 @@ function CharArchiveView({
         </div>
       ) : undefined}
     >
-      {!isEditing && isExisting && <div className="m-4 grid grid-cols-2 gap-2">
-        <button type="button" className="rounded-xl border px-3 py-3" onClick={() => setShowRelationship(true)}>关系与模式</button>
-        <button type="button" className="rounded-xl border px-3 py-3" onClick={() => setShowGrowth(true)}>成长与信息边界</button>
-      </div>}
       {archiveFrame}
 
       {showSaveVersionConfirm && (

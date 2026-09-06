@@ -6,8 +6,8 @@ import { migrateCharacterGrowth, runManualPersonalityGrowth } from "@/lib/person
 import { PageShell } from "@/components/ui/page-shell";
 
 const labels = { current: "当前成长", pending: "待你确认", history: "成长轨迹", privacy: "信息边界" };
-export function CharacterGrowthPanel({ character, onBack }: { character: Character; onBack: () => void }) {
-  const [tab, setTab] = useState<keyof typeof labels>("current");
+export function CharacterGrowthPanel({ character, onBack, initialTab = "current" }: { character: Character; onBack: () => void; initialTab?: keyof typeof labels }) {
+  const [tab, setTab] = useState<keyof typeof labels>(initialTab);
   const [state, setState] = useState<CharacterGrowth>({ revisions: [], allowOtherChats: false });
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
