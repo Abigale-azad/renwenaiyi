@@ -1524,6 +1524,29 @@
 /* Relationship and growth pages remain inside the original black-and-white dossier system. */
 .relationship-dossier-page .page-body,.growth-compact-page .page-body{background:var(--c-page-body-bg)}
 .relationship-dossier,.growth-compact{max-width:none;margin:12px;padding:0;border:1px solid var(--c-panel-border);background:var(--c-panel);color:var(--c-text-title)}
+
+/* Casting studio belongs to the same paper dossier as the character archive. */
+.casting-studio{background:var(--c-page-body-bg,#f5f2eb);color:var(--c-text-title,#24211d);font-family:inherit;overscroll-behavior:contain;touch-action:pan-y}
+.casting-studio-header{min-height:58px;background:color-mix(in srgb,var(--c-page-body-bg,#f5f2eb) 94%,transparent);border-bottom:2px solid var(--c-panel-border,#292621);backdrop-filter:blur(12px);color:var(--c-text-title,#24211d)}
+.casting-studio-header button{color:var(--c-text-title,#24211d);border-radius:2px}
+.casting-studio-header button:active{background:color-mix(in srgb,var(--c-text-title,#24211d) 8%,transparent)}
+.casting-studio-header h2{font-size:calc(15px*var(--app-text-scale,1));letter-spacing:.08em;text-transform:uppercase}
+.casting-studio-header h2+*{display:none}
+.casting-studio-header .text-\[10px\]{color:var(--c-danger,#8d2f2b)!important;font-size:calc(7px*var(--app-text-scale,1))!important;font-weight:700}
+.casting-studio-body{color:var(--c-text-title,#24211d)}
+.casting-studio-body section,.casting-studio-body details{background:var(--c-panel,#fffdf8)!important;border-color:var(--c-panel-border,#b9b1a5)!important;border-radius:2px!important;box-shadow:none!important}
+.casting-studio-body section[class*="bg-gradient"]{min-height:260px!important;background:var(--c-panel,#fffdf8)!important;border-width:1px!important;border-left:4px solid var(--c-text-title,#24211d)!important;justify-content:flex-start!important}
+.casting-studio-body input,.casting-studio-body textarea,.casting-studio-body select{background:var(--c-input,#f3efe7)!important;color:var(--c-text-title,#24211d)!important;border-color:var(--c-panel-border,#b9b1a5)!important;border-radius:2px!important}
+.casting-studio-body input::placeholder,.casting-studio-body textarea::placeholder{color:var(--c-text,#777)!important;opacity:.55}
+.casting-studio-body label,.casting-studio-body p,.casting-studio-body small,.casting-studio-body [class*="text-white"]{color:var(--c-text,#625d55)!important}
+.casting-studio-body h3,.casting-studio-body b,.casting-studio-body blockquote{color:var(--c-text-title,#24211d)!important}
+.casting-studio-body h3{font-family:inherit;font-size:calc(25px*var(--app-text-scale,1));letter-spacing:.04em}
+.casting-studio-body blockquote{border-color:var(--c-danger,#8d2f2b)!important}
+.casting-studio-body button{border-radius:2px!important;border-color:var(--c-panel-border,#b9b1a5)!important}
+.casting-studio-body button[class*="bg-[#c6a778]"]{background:var(--c-text-title,#24211d)!important;color:var(--c-page-body-bg,#f5f2eb)!important}
+.casting-studio-body button[class*="border-[#c6a778]"]{border-color:var(--c-danger,#8d2f2b)!important;color:var(--c-danger,#8d2f2b)!important;background:color-mix(in srgb,var(--c-danger,#8d2f2b) 5%,transparent)!important}
+.casting-studio-body span[class*="bg-white"]{background:transparent!important;color:var(--c-danger,#8d2f2b)!important;border:1px solid var(--c-danger,#8d2f2b);border-radius:2px!important;font-weight:700;text-transform:uppercase}
+.casting-studio-body summary{border-bottom:1px dashed var(--c-panel-border,#b9b1a5);font-size:calc(12px*var(--app-text-scale,1));letter-spacing:.04em}
 .relationship-cover{min-height:0;padding:14px 12px;border:0;border-bottom:2px solid var(--c-panel-border);border-radius:0;background:transparent;color:inherit;box-shadow:none}.relationship-cover-kicker{font-size:calc(8px*var(--app-text-scale,1));letter-spacing:.1em}.relationship-cover h1{margin:12px 0 2px;font:800 calc(18px*var(--app-text-scale,1))/1.1 inherit;text-transform:uppercase}.relationship-cover p{font-size:calc(8px*var(--app-text-scale,1));letter-spacing:.1em}.relationship-mode-seal{right:12px;bottom:12px;padding:4px 7px;border:1px solid var(--c-panel-border);border-radius:0}.relationship-mode-seal b{font-size:calc(10px*var(--app-text-scale,1))}
 .relationship-section{margin:0;padding:14px 12px;border:0;border-bottom:1px dashed var(--c-panel-border);border-radius:0;background:transparent;box-shadow:none}.relationship-section-private{background:transparent}.relationship-section-title{border-bottom:1px solid var(--c-panel-border)}.relationship-section-title>span{color:var(--c-icon)}.relationship-stage-grid button{border:1px solid var(--c-panel-border);border-radius:0;background:transparent}.relationship-stage-grid button[data-active]{background:var(--c-text-title);color:var(--c-page-body-bg);border-color:var(--c-text-title)}.relationship-field-index{border-color:var(--c-panel-border);border-radius:0;color:var(--c-icon)}.relationship-field textarea{border:1px dashed var(--c-panel-border);border-radius:0;background:color-mix(in srgb,var(--c-input) 50%,transparent)}
 .relationship-migration-card{margin:0;padding:12px;border:0;border-bottom:1px solid var(--c-panel-border);border-radius:0;background:transparent}.relationship-migration-icon{border-radius:0;background:var(--c-text-title);color:var(--c-page-body-bg)}.relationship-save{width:calc(100% - 24px);margin:12px;padding:11px;border:1px solid var(--c-text-title);border-radius:0;background:var(--c-text-title);color:var(--c-page-body-bg)}.relationship-notice{margin:12px;border-left-color:var(--c-text-title);background:var(--c-input)}
