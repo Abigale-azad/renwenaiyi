@@ -4,7 +4,7 @@ export const CHARACTER_RELATIONSHIP_KEY = "ai_phone_character_relationship_v1";
 export const CHARACTER_RELATIONSHIP_UPDATED_EVENT = "character-relationship-updated";
 registerKvMigration(CHARACTER_RELATIONSHIP_KEY);
 
-export type CharacterChatMode = "reality" | "flirt" | "intimate" | "scenario";
+export type CharacterChatMode = "reality" | "intimate";
 export type RelationshipStage = "new" | "familiar" | "ambiguous" | "confirmed_online" | "confirmed_real";
 
 export type CharacterRelationshipProfile = {
@@ -41,7 +41,7 @@ function readStore(): Record<string, Partial<CharacterRelationshipProfile>> {
 }
 
 function isMode(value: unknown): value is CharacterChatMode {
-  return value === "reality" || value === "flirt" || value === "intimate" || value === "scenario";
+  return value === "reality" || value === "intimate";
 }
 
 function isStage(value: unknown): value is RelationshipStage {
@@ -82,9 +82,7 @@ const STAGE_LABELS: Record<RelationshipStage, string> = {
 
 export const CHAT_MODE_LABELS: Record<CharacterChatMode, string> = {
   reality: "现实",
-  flirt: "暧昧",
   intimate: "亲密",
-  scenario: "情境",
 };
 
 export function buildCharacterRelationshipPrompt(characterId: string): string {
@@ -96,14 +94,8 @@ export function buildCharacterRelationshipPrompt(characterId: string): string {
     profile.relationshipBoundaries.trim() ? `关系边界：\n${profile.relationshipBoundaries.trim()}` : "关系按普通现实社交规则推进，不自动升级。",
   ].join("\n");
 
-  if (profile.currentMode === "flirt") {
-    return `【结构化当前模式：暧昧聊天｜用户已在界面开启】\n${relationship}\n可以表达吸引、试探和含蓄暧昧，但不得把暧昧升级成已经确定的现实恋爱、婚姻、同居或身体接触。`;
-  }
   if (profile.currentMode === "intimate") {
     return `【结构化当前模式：亲密档案｜用户已在界面明确开启】\n${relationship}\n以下内容只在本次亲密模式中作为演出偏好，不是现实事实，退出模式后不得当作现实记忆：\n${profile.intimacyProfile.trim() || "用户尚未填写亲密档案。不要擅自补写偏好或推进露骨情节；先询问边界。"}`;
   }
-  if (profile.currentMode === "scenario") {
-    return `【结构化当前模式：虚构情境｜用户已在界面明确开启】\n${relationship}\n这是与现实隔离的角色演出。情境中的身份、地点、身体动作和事件均不得写回现实事实。\n情境前提：\n${profile.scenarioProfile.trim() || "尚未登记固定情境；先让用户给出本次场景，不要自行假定已同处。"}`;
-  }
-  return `【结构化当前模式：现实聊天】\n${relationship}\n亲密档案与虚构情境当前未加载。人物卡或世界书里的共感、里世界、婚恋和身体描写不得覆盖此状态。`;
+  return `【结构化当前模式：现实聊天】\n${relationship}\n亲密档案当前未加载。人物卡、世界书或情境设定里的共感、里世界、婚恋和身体描写不得覆盖现实状态；只有用户明确切换到亲密模式才可加载。`;
 }

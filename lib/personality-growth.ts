@@ -53,7 +53,9 @@ export async function updatePersonalityGrowthWorldBook(input: {
   finally { running.delete(input.characterId); }
 }
 export async function runManualPersonalityGrowth(input: { characterId: string; characterName: string }) {
-  const entries = loadNativeTimeline(input.characterId);
+  const entries = loadNativeTimeline(input.characterId).filter(entry =>
+    entry.sourceApp !== "chat" || entry.sourceDetail !== "direct" || (entry.conversationMode || "reality") !== "intimate"
+  );
   if (entries.length < 4) return { success: false, error: "至少需要4条该角色的互动记录" };
   const formatted = formatTimelineForSummarization(entries);
   if (!formatted?.eventsText) return { success: false, error: "没有可整理的互动" };

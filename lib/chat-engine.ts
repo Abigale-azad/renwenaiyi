@@ -53,7 +53,8 @@ import {
 import { setDebugPromptSnapshot, type DebugPromptSnapshot } from "./debug-store";
 import { extractFinishReason } from "./api-helpers";
 import { loadMemoryConfig, incrementEventCounter } from "./memory-storage";
-import { retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "./memory-service";
+import { filterMemoriesForMode, getCharacterMemoryScope, retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "./memory-service";
+import { loadCharacterRelationship } from "./character-relationship-storage";
 import { formatCoreMemories, formatLongTermMemories } from "./memory-injector";
 import { maybeRunSummarization } from "./memory-summarizer";
 import { prepareShortTermContext } from "./short-term-assembler";
@@ -1858,8 +1859,9 @@ export async function buildChatPromptMessages(
         buildMusicCloudMacro(),
     ]);
 
-    const longTermMemories = memResults ? formatLongTermMemories(memResults) : "";
-    const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
+    const activeConversationMode = loadCharacterRelationship(character.id).currentMode;
+    const longTermMemories = memResults ? formatLongTermMemories(filterMemoriesForMode(memResults, activeConversationMode)) : "";
+    const coreMemories = coreResults ? formatCoreMemories(filterMemoriesForMode(coreResults, activeConversationMode)) : "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
     const musicOnlineHint = isNeteaseConfigured() ? "- 你可以推荐任何歌曲，系统会在线搜索并播放。不局限于用户本地音乐库。\n" : "\n";
@@ -2488,8 +2490,10 @@ export async function generateChatCompletion(
     // Memory: increment event counter + check if summarization needed (non-blocking)
     (async () => {
         try {
-            incrementEventCounter(character.id); // user message
-            incrementEventCounter(character.id); // AI reply
+            const memoryMode = loadCharacterRelationship(character.id).currentMode;
+            const memoryScope = getCharacterMemoryScope(memoryMode);
+            incrementEventCounter(character.id, memoryScope); // user message
+            incrementEventCounter(character.id, memoryScope); // AI reply
             await maybeRunSummarization(character.id, character.name);
         } catch (err) {
             console.warn("[ChatEngine] Memory counter/summarization failed:", err);

@@ -40,7 +40,10 @@ export async function runCoreMemoryPipeline(
     options?: { force?: boolean },
 ): Promise<{ success: boolean; error?: string; rebuiltCount?: number }> {
     const config = loadMemoryConfig();
-    const allLongTermEntries = await loadMemoryEntriesByType(characterId, "long_term");
+    const allLongTermEntries = (await loadMemoryEntriesByType(characterId, "long_term")).filter(entry => {
+        const mode = entry.conversationMode || entry.metadata?.conversationMode || "reality";
+        return mode !== "intimate";
+    });
 
     if (allLongTermEntries.length === 0) {
         return { success: false, error: "没有可用于总结核心记忆的长期记忆" };

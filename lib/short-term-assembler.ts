@@ -27,6 +27,7 @@ import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { renderUserNameMacro } from "./user-macro";
 import { loadChatOfflineProjectionEntries } from "./chat-offline-storage";
 import { loadCheckPhoneProjectionEntries } from "./checkphone-storage";
+import type { CharacterChatMode } from "./character-relationship-storage";
 import { formatShoppingPaymentRequestHistory } from "./shopping-payment-request";
 import { loadCustomAppTimelineEntries } from "./custom-app-storage";
 import {
@@ -59,6 +60,7 @@ export type NativeTimelineEntry = {
     groupName?: string;      // for group chat: display name of the group
     timestamp: string; // ISO date
     content: string;   // formatted content for display / summarization
+    conversationMode?: CharacterChatMode;
     momentsMeta?: NativeMomentMeta;
     customAppId?: string;
     customAppName?: string;
@@ -382,6 +384,7 @@ export function loadNativeTimeline(
                 id: msg.id,
                 sourceApp: "chat",
                 sourceDetail: "direct",
+                conversationMode: msg.conversationMode || "reality",
                 timestamp: msg.createdAt,
                 content: `${msgLabel} ${sender}: ${content}`,
             });

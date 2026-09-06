@@ -13,6 +13,7 @@ import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
+import { loadCharacterRelationship, type CharacterChatMode } from "./character-relationship-storage";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -84,6 +85,8 @@ export type ChatMessage = {
     content: string;
     status: ChatMessageStatus;
     createdAt: string; // ISO date
+    /** Mode active when this message was created. Legacy messages omit it and are treated as reality. */
+    conversationMode?: CharacterChatMode;
     order?: number; // Stable per-session display order
     responseBatchId?: string; // Assistant raw-response batch id
     rawResponseText?: string; // Assistant raw response before parsing/splitting
@@ -1137,8 +1140,13 @@ export function createToolExecutionId(): string {
 }
 
 export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "status"> & { status?: ChatMessageStatus }): ChatMessage {
+    const messageSession = loadChatSessions().find(session => session.id === msg.sessionId);
+    const conversationMode = msg.conversationMode || (!messageSession?.isGroup && messageSession?.contactId
+        ? loadCharacterRelationship(messageSession.contactId).currentMode
+        : "reality");
     let newMsg: ChatMessage = {
         ...msg,
+        conversationMode,
         id: createMessageId(),
         createdAt: new Date().toISOString(),
         order: getNextMessageOrder(msg.sessionId),

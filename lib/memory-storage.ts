@@ -203,33 +203,35 @@ registerDynamicPrefix(LAST_SUMMARY_TS_PREFIX);
 registerDynamicPrefix(CORE_COUNTER_PREFIX);
 registerDynamicPrefix(LAST_CORE_SUMMARY_TS_PREFIX);
 
-export function getEventCounter(characterId: string): number {
+function scopedCharacterKey(characterId: string, mode?: string): string { return mode ? `${characterId}:${mode}` : characterId; }
+
+export function getEventCounter(characterId: string, mode?: string): number {
     if (typeof window === "undefined") return 0;
-    const val = kvGet(EVENT_COUNTER_PREFIX + characterId);
+    const val = kvGet(EVENT_COUNTER_PREFIX + scopedCharacterKey(characterId, mode));
     return val ? parseInt(val, 10) || 0 : 0;
 }
 
-export function incrementEventCounter(characterId: string): number {
-    const next = getEventCounter(characterId) + 1;
+export function incrementEventCounter(characterId: string, mode?: string): number {
+    const next = getEventCounter(characterId, mode) + 1;
     if (typeof window !== "undefined") {
-        kvSet(EVENT_COUNTER_PREFIX + characterId, String(next));
+        kvSet(EVENT_COUNTER_PREFIX + scopedCharacterKey(characterId, mode), String(next));
     }
     return next;
 }
 
-export function resetEventCounter(characterId: string): void {
+export function resetEventCounter(characterId: string, mode?: string): void {
     if (typeof window === "undefined") return;
-    kvSet(EVENT_COUNTER_PREFIX + characterId, "0");
+    kvSet(EVENT_COUNTER_PREFIX + scopedCharacterKey(characterId, mode), "0");
 }
 
-export function getLastSummarizedTimestamp(characterId: string): string | null {
+export function getLastSummarizedTimestamp(characterId: string, mode?: string): string | null {
     if (typeof window === "undefined") return null;
-    return kvGet(LAST_SUMMARY_TS_PREFIX + characterId) || null;
+    return kvGet(LAST_SUMMARY_TS_PREFIX + scopedCharacterKey(characterId, mode)) || null;
 }
 
-export function setLastSummarizedTimestamp(characterId: string, ts: string): void {
+export function setLastSummarizedTimestamp(characterId: string, ts: string, mode?: string): void {
     if (typeof window === "undefined") return;
-    kvSet(LAST_SUMMARY_TS_PREFIX + characterId, ts);
+    kvSet(LAST_SUMMARY_TS_PREFIX + scopedCharacterKey(characterId, mode), ts);
 }
 
 export function getCoreMemoryCounter(characterId: string): number {

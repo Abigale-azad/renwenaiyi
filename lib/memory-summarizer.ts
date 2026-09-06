@@ -21,6 +21,8 @@ import { generateEmbedding, resolveEmbeddingModel } from "./memory-embedding";
 import { simpleLLMCall } from "./api-helpers";
 import { maybeRunCoreMemoryPipeline } from "./core-memory-builder";
 import { updatePersonalityGrowthWorldBook } from "./personality-growth";
+import { loadCharacterRelationship, type CharacterChatMode } from "./character-relationship-storage";
+import { getCharacterMemoryScope } from "./memory-service";
 
 /** Per-character lock to prevent concurrent summarization. */
 const summarizingSet = new Set<string>();
@@ -37,14 +39,16 @@ export async function maybeRunSummarization(
     const config = loadMemoryConfig();
     if (!config.autoSummarizeEnabled) return;
 
-    const counter = getEventCounter(characterId);
+    const mode = loadCharacterRelationship(characterId).currentMode;
+    const memoryScope = getCharacterMemoryScope(mode);
+    const counter = getEventCounter(characterId, memoryScope);
     const interval = config.summarizationEventInterval === 80 ? 30 : config.summarizationEventInterval;
     if (counter < interval) return;
 
     if (summarizingSet.has(characterId)) return;
     summarizingSet.add(characterId);
     try {
-        await runSummarizationPipeline(characterId, characterName);
+        await runSummarizationPipeline(characterId, characterName, { mode });
     } finally {
         summarizingSet.delete(characterId);
     }
@@ -63,6 +67,7 @@ export async function runSummarizationPipeline(
         force?: boolean;
         /** 手动指定总结起点（覆盖进度水位线）；force 为真时忽略 */
         sinceTimestamp?: string;
+        mode?: CharacterChatMode;
     }
 ): Promise<{ success: boolean; error?: string }> {
     const config = loadMemoryConfig();
@@ -74,13 +79,16 @@ export async function runSummarizationPipeline(
     }
 
     // Read native app data (chat messages, moments) directly — no separate event log
+    const mode = options?.mode || loadCharacterRelationship(characterId).currentMode;
+    const memoryScope = getCharacterMemoryScope(mode);
     const afterTimestamp = options?.force
         ? undefined
-        : options?.sinceTimestamp ?? (getLastSummarizedTimestamp(characterId) ?? undefined);
-    const allEntries = loadNativeTimeline(characterId, afterTimestamp ? { afterTimestamp } : undefined);
+        : options?.sinceTimestamp ?? (getLastSummarizedTimestamp(characterId, memoryScope) ?? undefined);
+    const allEntries = loadNativeTimeline(characterId, afterTimestamp ? { afterTimestamp } : undefined)
+        .filter(entry => entry.sourceApp !== "chat" || entry.sourceDetail !== "direct" || getCharacterMemoryScope(entry.conversationMode || "reality") === memoryScope);
 
     if (allEntries.length < 4) {
-        if (!options?.force) resetEventCounter(characterId);
+        if (!options?.force) resetEventCounter(characterId, memoryScope);
         return { success: false, error: allEntries.length === 0 ? "没有可总结的事件" : "事件不足 4 条" };
     }
 
@@ -153,7 +161,9 @@ export async function runSummarizationPipeline(
         importance: 0.8,
         createdAt: now,
         updatedAt: now,
+        conversationMode: mode,
         metadata: {
+            conversationMode: mode,
             summarizedEvents: allEntries.length,
             timeSpan: `${earliest} ~ ${latest}`,
             sourceSessionIds,
@@ -162,8 +172,8 @@ export async function runSummarizationPipeline(
     await saveMemoryEntry(longTermEntry);
 
     // Update last summarized timestamp + reset counter
-    setLastSummarizedTimestamp(characterId, latest);
-    resetEventCounter(characterId);
+    setLastSummarizedTimestamp(characterId, latest, memoryScope);
+    resetEventCounter(characterId, memoryScope);
 
     // Enforce long-term limit
     const allLongTerm = await loadMemoryEntries(characterId);
@@ -172,15 +182,17 @@ export async function runSummarizationPipeline(
         await deleteMemoryEntries(excess.map(e => e.id));
     }
 
-    incrementCoreMemoryCounter(characterId);
-    await maybeRunCoreMemoryPipeline(characterId, characterName);
+    if (memoryScope === "daily") {
+        incrementCoreMemoryCounter(characterId);
+        await maybeRunCoreMemoryPipeline(characterId, characterName);
+    }
 
-    const growthResult = await updatePersonalityGrowthWorldBook({
+    const growthResult = memoryScope === "daily" ? await updatePersonalityGrowthWorldBook({
         characterId,
         characterName,
         recentEvents: eventsText,
         factualSummary: summary,
-    });
+    }) : { success: true };
     if (!growthResult.success) {
         console.warn("[PersonalityGrowth] Auto update failed:", growthResult.error);
     }

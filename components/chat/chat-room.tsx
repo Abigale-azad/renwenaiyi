@@ -5490,12 +5490,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         <div className="mt-4 grid grid-cols-2 gap-2">
                             {([
                                 ["reality", "现实", "事实与行动可核验，默认模式"],
-                                ["flirt", "暧昧", "允许试探，不自动确立关系"],
                                 ["intimate", "亲密", "加载该角色的专属亲密档案"],
-                                ["scenario", "情境", "加载共感／里世界等虚构设定"],
                             ] as Array<[CharacterChatMode, string, string]>).map(([mode, label, hint]) => <button key={mode} type="button" data-active={chatMode === mode || undefined} onClick={() => selectChatMode(mode)} className="chat-mode-option"><span>{label}</span><small>{hint}</small>{chatMode === mode && <i>ACTIVE</i>}</button>)}
                         </div>
-                        {(chatMode === "intimate" || chatMode === "scenario") && <p className="mt-3 rounded-xl border p-3 text-xs opacity-75">该模式中的身体动作、关系与事件只属于演出，不会自动成为现实事实。点「现实」即可立即退出。</p>}
+                        {chatMode === "intimate" && <p className="mt-3 rounded-xl border p-3 text-xs opacity-75">亲密模式中的身体动作、关系与事件不会写进日常记忆和人格成长。点「现实」即可立即退出。</p>}
                     </div>
                 </div>
             )}

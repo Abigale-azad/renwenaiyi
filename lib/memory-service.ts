@@ -6,6 +6,20 @@ import { loadMemoryEntriesByType } from "./memory-storage";
 import { resolveAuxiliaryApiConfig } from "./settings-storage";
 import { generateEmbedding, resolveEmbeddingModel, cosineSimilarity } from "./memory-embedding";
 import { estimateTokens } from "./token-counter";
+import type { CharacterChatMode } from "./character-relationship-storage";
+
+export type CharacterMemoryScope = "daily" | "intimate";
+export function getCharacterMemoryScope(mode: CharacterChatMode): CharacterMemoryScope {
+    return mode === "intimate" ? "intimate" : "daily";
+}
+
+export function filterMemoriesForMode(entries: MemoryEntry[], mode: CharacterChatMode): MemoryEntry[] {
+    const expectedScope = getCharacterMemoryScope(mode);
+    return entries.filter(entry => {
+        const scope = entry.conversationMode || (typeof entry.metadata?.conversationMode === "string" ? entry.metadata.conversationMode : "reality");
+        return getCharacterMemoryScope(scope as CharacterChatMode) === expectedScope;
+    });
+}
 
 /**
  * Retrieve relevant long-term memories for prompt injection.

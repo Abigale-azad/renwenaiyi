@@ -1,6 +1,7 @@
 // lib/memory-types.ts
 
 import type { ContentAppId } from "./settings-types";
+import type { CharacterChatMode } from "./character-relationship-storage";
 
 export type MemoryEntry = {
     id: string;
@@ -14,6 +15,8 @@ export type MemoryEntry = {
     updatedAt: string;
     sourceMessageIds?: string[];
     metadata?: Record<string, unknown>;
+    /** Direct-chat mode this memory belongs to. Missing legacy entries are reality-only. */
+    conversationMode?: CharacterChatMode;
 };
 
 export type MemoryConfig = {
